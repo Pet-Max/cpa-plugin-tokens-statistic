@@ -1,0 +1,64 @@
+name: "Bug 反馈 / Bug Report"
+description: "报告一个可复现的问题 / Report a reproducible problem"
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢提交问题！请先确认你使用的是最新版本。
+        Thank you for reporting a problem! Please make sure you are using the latest version first.
+
+  - type: input
+    id: plugin_version
+    attributes:
+      label: "插件版本 / Plugin version"
+      description: "请填写 tokens-statistic 的版本号 / Please provide the tokens-statistic version"
+      placeholder: "例如：v1.3.4-alpha.153 /  v1.3.4"
+    validations:
+      required: true
+
+  - type: input
+    id: cpa_version
+    attributes:
+      label: "宿主版本（CPA）/ Host version (CPA)"
+      description: "请填写 CLIProxyAPI 的版本号 / Please provide the CLIProxyAPI version"
+      placeholder: "例如：v0.1.0 "
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "问题描述 / Problem description"
+      description: "请清楚描述发生了什么 / Clearly describe what happened"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: "复现步骤 / Steps to reproduce"
+      description: "请按顺序说明如何复现问题 / List the steps needed to reproduce the problem"
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "预期行为 / Expected behavior"
+      description: "请说明你原本期望发生什么 / Describe what you expected to happen"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "日志或截图 / Logs or screenshots"
+      description: "可以拖入截图，也可以粘贴相关日志 / Drag in screenshots or paste relevant logs"
+      render: text

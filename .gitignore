@@ -1,0 +1,59 @@
+# Build output
+dist/
+*.dll
+*.dylib
+*.so
+*.h
+*.exe
+/abi-smoke
+/abi-smoke.exe
+
+# Runtime data
+*.db
+*.db.lock
+*.db.tmp
+data/
+
+# Go tooling
+coverage.out
+*.test
+*.prof
+*.pprof
+__debug_bin*
+go.work
+go.work.sum
+vendor/
+
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# IDE / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# AI / local tooling
+.ai/
+.claude/
+.zcode/
+.tmp-variants/
+.tools/
+
+# Patch leftovers
+*.orig
+*.rej
+
+# Local secrets
+.env
+
+# Logs
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,69 @@
+name: Upstream compatibility
+
+on:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  latest-cli-proxy-api:
+    name: Latest CLIProxyAPI SDK and ABI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install browser-test dependencies
+        run: npm ci
+
+      - name: Resolve and inspect latest SDK
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          module=github.com/router-for-me/CLIProxyAPI/v7
+          latest=$(go list -m -json "${module}@latest" | jq -r .Version)
+          info=$(go mod download -json "${module}@${latest}")
+          module_dir=$(printf '%s' "$info" | jq -r .Dir)
+
+          grep -Eq 'ABIVersion[[:space:]]+uint32[[:space:]]*=[[:space:]]*1' \
+            "$module_dir/sdk/pluginabi/types.go"
+          grep -Fq 'if resp.SchemaVersion > pluginabi.SchemaVersion {' \
+            "$module_dir/internal/pluginhost/rpc_client.go"
+
+          echo "version=$latest" >> "$GITHUB_OUTPUT"
+          echo "Verified native ABI 1 and lower-schema plugin negotiation in $latest"
+
+      - name: Test against latest SDK
+        shell: bash
+        env:
+          REQUIRE_BROWSER_TESTS: "1"
+          CHROME_PATH: /usr/bin/google-chrome
+        run: |
+          set -euo pipefail
+          module=github.com/router-for-me/CLIProxyAPI/v7
+          go mod edit -require="${module}@${{ steps.upstream.outputs.version }}"
+          go mod tidy
+          go test -count=1 ./...
+
+      - name: Build and run future-schema ABI smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=1 go build -buildmode=c-shared -trimpath -buildvcs=false \
+            -o tokens-statistic.so .
+          cc -O2 -Wall -Wextra -o abi-smoke scripts/abi-smoke.c -ldl
+          ./abi-smoke ./tokens-statistic.so
