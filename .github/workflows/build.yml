@@ -176,7 +176,7 @@ jobs:
       - name: Set up zig
         uses: mlugg/setup-zig@v1
         with:
-          version: 0.16.0
+          version: 0.14.1
 
       - name: Build DLL
         shell: pwsh
