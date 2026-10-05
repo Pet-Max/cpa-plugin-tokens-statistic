@@ -93,6 +93,7 @@ type ModelPricesResponse struct {
 	Prices        map[string]ModelPrice `json:"prices"`
 	SyncSettings  PriceSyncSettings     `json:"sync_settings"`
 	LastSync      *PriceSyncMetadata    `json:"last_sync,omitempty"`
+	SavedAt       *time.Time            `json:"saved_at,omitempty"`
 }
 
 func defaultPriceSyncSettings() PriceSyncSettings {
@@ -371,6 +372,14 @@ func clonePriceSyncSettings(input PriceSyncSettings) PriceSyncSettings {
 }
 
 func clonePriceSyncMetadata(input *PriceSyncMetadata) *PriceSyncMetadata {
+	if input == nil {
+		return nil
+	}
+	result := *input
+	return &result
+}
+
+func cloneTimePtr(input *time.Time) *time.Time {
 	if input == nil {
 		return nil
 	}

@@ -10,50 +10,44 @@ import (
 )
 
 const (
-	defaultRetentionDays             = 365
-	defaultFullModeSessionTTLMinutes = 15
-	minFullModeSessionTTLMinutes     = 1
-	maxFullModeSessionTTLMinutes     = 1440
-	defaultFlushInterval             = 5 * time.Second
-	defaultFlushBatchSize            = 100
-	defaultCompressionEnabled        = true
-	defaultCompressionMinBytes       = 1024
-	maxCompressionMinBytes           = 16 << 20
+	defaultRetentionDays       = 365
+	defaultFlushInterval       = 5 * time.Second
+	defaultFlushBatchSize      = 100
+	defaultCompressionEnabled  = true
+	defaultCompressionMinBytes = 1024
+	maxCompressionMinBytes     = 16 << 20
 )
 
 type Config struct {
-	DataPath                  string
-	RetentionDays             int
-	FlushInterval             time.Duration
-	FlushBatchSize            int
-	SyncOnRecord              bool
-	APIKeySecret              string
-	CompressionEnabled        bool
-	CompressionMinBytes       int
-	FullModeSessionTTLMinutes int
+	DataPath            string
+	RetentionDays       int
+	FlushInterval       time.Duration
+	FlushBatchSize      int
+	SyncOnRecord        bool
+	APIKeySecret        string
+	CompressionEnabled  bool
+	CompressionMinBytes int
 }
 
-// configYAML is the small user-facing surface: db, retention, flush, secret
-// and session_ttl. Compression knobs and the batch size stay internal.
+// configYAML is the small user-facing surface: db, retention, flush and secret.
+// Compression knobs and the batch size stay internal.
 type configYAML struct {
 	DataPath     string  `yaml:"db"`
 	Retention    *int    `yaml:"retention"`
 	Flush        string  `yaml:"flush"`
 	APIKeySecret *string `yaml:"secret"`
-	SessionTTL   *int    `yaml:"session_ttl"`
 }
 
 func defaultConfig() Config {
 	return Config{
-		DataPath:                  resolvedDefaultDataPath(),
-		RetentionDays:             defaultRetentionDays,
-		FlushInterval:             defaultFlushInterval,
-		FlushBatchSize:            defaultFlushBatchSize,
-		SyncOnRecord:              true,
-		APIKeySecret:              defaultAPIKeySecret,
-		CompressionEnabled:        defaultCompressionEnabled,
-		CompressionMinBytes:       defaultCompressionMinBytes,
-		FullModeSessionTTLMinutes: defaultFullModeSessionTTLMinutes,
+		DataPath:            resolvedDefaultDataPath(),
+		RetentionDays:       defaultRetentionDays,
+		FlushInterval:       defaultFlushInterval,
+		FlushBatchSize:      defaultFlushBatchSize,
+		SyncOnRecord:        true,
+		APIKeySecret:        defaultAPIKeySecret,
+		CompressionEnabled:  defaultCompressionEnabled,
+		CompressionMinBytes: defaultCompressionMinBytes,
 	}
 }
 
@@ -84,9 +78,6 @@ func parseConfig(raw []byte) (Config, error) {
 	if input.APIKeySecret != nil {
 		cfg.APIKeySecret = *input.APIKeySecret
 	}
-	if input.SessionTTL != nil {
-		cfg.FullModeSessionTTLMinutes = *input.SessionTTL
-	}
 	return normalizeConfig(cfg)
 }
 
@@ -108,9 +99,6 @@ func normalizeConfig(cfg Config) (Config, error) {
 	}
 	if cfg.CompressionMinBytes < 0 || cfg.CompressionMinBytes > maxCompressionMinBytes {
 		return Config{}, fmt.Errorf("compression threshold must be between 0 and %d", maxCompressionMinBytes)
-	}
-	if cfg.FullModeSessionTTLMinutes < minFullModeSessionTTLMinutes || cfg.FullModeSessionTTLMinutes > maxFullModeSessionTTLMinutes {
-		return Config{}, fmt.Errorf("session_ttl must be between %d and %d", minFullModeSessionTTLMinutes, maxFullModeSessionTTLMinutes)
 	}
 	absolute, err := filepath.Abs(filepath.Clean(cfg.DataPath))
 	if err != nil {

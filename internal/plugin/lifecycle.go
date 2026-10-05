@@ -51,9 +51,6 @@ type pluginRuntime struct {
 	exchangeRates     *exchangeRateService
 	authResolver      *authIdentityResolver
 	priceSyncing      bool
-	fullModeMu        sync.Mutex
-	fullModeSessions  map[[32]byte]fullModeSession
-	fullModeUploads   map[string]fullModeUpload
 }
 
 var runtimeState = &pluginRuntime{}
@@ -134,10 +131,6 @@ func (r *pluginRuntime) applyConfig(config Config) error {
 	r.crypto = crypto
 	r.apiKeyGeneration, r.apiKeyGenerations = next.APIKeyCryptoState()
 	r.mu.Unlock()
-	r.fullModeMu.Lock()
-	r.fullModeSessions = nil
-	r.fullModeUploads = nil
-	r.fullModeMu.Unlock()
 	if old != nil {
 		if err := old.Close(); err != nil {
 			return fmt.Errorf("close previous store: %w", err)
@@ -206,10 +199,6 @@ func (r *pluginRuntime) shutdown() error {
 	r.exchangeRates = nil
 	r.authResolver = nil
 	r.mu.Unlock()
-	r.fullModeMu.Lock()
-	r.fullModeSessions = nil
-	r.fullModeUploads = nil
-	r.fullModeMu.Unlock()
 	if store == nil {
 		return nil
 	}

@@ -24,35 +24,23 @@ type managementRegistrationResponse struct {
 }
 
 type registeredRoutes struct {
-	pluginID                  string
-	statsPath                 string
-	resetPath                 string
-	backupPath                string
-	restorePath               string
-	dashboardPath             string
-	fullDashboardPath         string
-	fullModeSessionPath       string
-	fullModeSessionRevokePath string
-	fullModeDataPath          string
-	fullModeAPIKeyLabelsPath  string
-	fullModePricesPath        string
-	fullModePricesSavePath    string
-	fullModePriceSyncPath     string
-	fullModeBackupPath        string
-	fullModeRestorePath       string
-	fullModeResetPath         string
-	resourceStatsPath         string
-	resourceStatsInitialPath  string
-	resourceStatsTrendPath    string
-	resourceStatsGroupsPath   string
-	resourceRequestsPath      string
-	resourceCostsPath         string
-	resourceExchangeRatePath  string
-	pricesPath                string
-	priceSyncPath             string
-	resourcePricesPath        string
-	resourcePreferencesPath   string
-	preferencesSavePath       string
+	pluginID         string
+	statsPath        string
+	statsInitialPath string
+	statsTrendPath   string
+	statsGroupsPath  string
+	requestsPath     string
+	costsPath        string
+	exchangeRatePath string
+	pricesPath       string
+	priceSyncPath    string
+	preferencesPath  string
+	apiKeyInfoPath   string
+	apiKeyLabelsPath string
+	dashboardPath    string
+	resetPath        string
+	backupPath       string
+	restorePath      string
 }
 
 func (r *pluginRuntime) registerManagement(raw []byte) (managementRegistrationResponse, error) {
@@ -65,36 +53,27 @@ func (r *pluginRuntime) registerManagement(raw []byte) (managementRegistrationRe
 		return managementRegistrationResponse{}, err
 	}
 
+	// All dynamic endpoints live under the management route family where the
+	// host enforces the management key. Resource routes serve static UI only.
+	managementBase := "/v0/management/plugins/" + pluginID
 	routes := registeredRoutes{
-		pluginID:                  pluginID,
-		statsPath:                 "/v0/management/plugins/" + pluginID + "/stats",
-		resetPath:                 "/v0/management/plugins/" + pluginID + "/reset",
-		backupPath:                "/v0/management/plugins/" + pluginID + "/backup",
-		restorePath:               "/v0/management/plugins/" + pluginID + "/restore",
-		dashboardPath:             "/v0/resource/plugins/" + pluginID + "/dashboard",
-		fullDashboardPath:         "/v0/resource/plugins/" + pluginID + "/full-dashboard",
-		fullModeSessionPath:       "/v0/management/plugins/" + pluginID + "/full-mode/session",
-		fullModeSessionRevokePath: "/v0/resource/plugins/" + pluginID + "/full-mode/session/revoke",
-		fullModeDataPath:          "/v0/resource/plugins/" + pluginID + "/full-mode/data",
-		fullModeAPIKeyLabelsPath:  "/v0/resource/plugins/" + pluginID + "/full-mode/api-key-labels",
-		fullModePricesPath:        "/v0/resource/plugins/" + pluginID + "/full-mode/prices",
-		fullModePricesSavePath:    "/v0/resource/plugins/" + pluginID + "/full-mode/prices/save",
-		fullModePriceSyncPath:     "/v0/resource/plugins/" + pluginID + "/full-mode/prices/sync",
-		fullModeBackupPath:        "/v0/resource/plugins/" + pluginID + "/full-mode/backup",
-		fullModeRestorePath:       "/v0/resource/plugins/" + pluginID + "/full-mode/restore",
-		fullModeResetPath:         "/v0/resource/plugins/" + pluginID + "/full-mode/reset",
-		resourceStatsPath:         "/v0/resource/plugins/" + pluginID + "/stats",
-		resourceStatsInitialPath:  "/v0/resource/plugins/" + pluginID + "/stats/initial",
-		resourceStatsTrendPath:    "/v0/resource/plugins/" + pluginID + "/stats/trends",
-		resourceStatsGroupsPath:   "/v0/resource/plugins/" + pluginID + "/stats/groups",
-		resourceRequestsPath:      "/v0/resource/plugins/" + pluginID + "/requests",
-		resourceCostsPath:         "/v0/resource/plugins/" + pluginID + "/costs",
-		resourceExchangeRatePath:  "/v0/resource/plugins/" + pluginID + "/exchange-rate",
-		pricesPath:                "/v0/management/plugins/" + pluginID + "/prices",
-		priceSyncPath:             "/v0/management/plugins/" + pluginID + "/prices/sync",
-		resourcePricesPath:        "/v0/resource/plugins/" + pluginID + "/prices",
-		resourcePreferencesPath:   "/v0/resource/plugins/" + pluginID + "/preferences",
-		preferencesSavePath:       "/v0/management/plugins/" + pluginID + "/preferences",
+		pluginID:         pluginID,
+		statsPath:        managementBase + "/stats",
+		statsInitialPath: managementBase + "/stats/initial",
+		statsTrendPath:   managementBase + "/stats/trends",
+		statsGroupsPath:  managementBase + "/stats/groups",
+		requestsPath:     managementBase + "/requests",
+		costsPath:        managementBase + "/costs",
+		exchangeRatePath: managementBase + "/exchange-rate",
+		pricesPath:       managementBase + "/prices",
+		priceSyncPath:    managementBase + "/prices/sync",
+		preferencesPath:  managementBase + "/preferences",
+		apiKeyInfoPath:   managementBase + "/api-key-info",
+		apiKeyLabelsPath: managementBase + "/api-key-labels",
+		dashboardPath:    "/v0/resource/plugins/" + pluginID + "/dashboard",
+		resetPath:        managementBase + "/reset",
+		backupPath:       managementBase + "/backup",
+		restorePath:      managementBase + "/restore",
 	}
 	r.mu.Lock()
 	r.routes = routes
@@ -103,24 +82,44 @@ func (r *pluginRuntime) registerManagement(raw []byte) (managementRegistrationRe
 	return managementRegistrationResponse{
 		Routes: []pluginapi.ManagementRoute{
 			{
-				Method:      http.MethodPost,
-				Path:        "/plugins/" + pluginID + "/full-mode/session",
-				Description: "Issue a short-lived capability for the separate full-mode dashboard.",
-			},
-			{
 				Method:      http.MethodGet,
 				Path:        "/plugins/" + pluginID + "/stats",
 				Description: "Read aggregated token usage statistics.",
 			},
 			{
-				Method:      http.MethodPost,
-				Path:        "/plugins/" + pluginID + "/preferences",
-				Description: "Persist dashboard table and time-range preferences.",
+				Method:      http.MethodGet,
+				Path:        "/plugins/" + pluginID + "/stats/initial",
+				Description: "Read compact first-screen token usage statistics.",
 			},
 			{
-				Method:      http.MethodPost,
-				Path:        "/plugins/" + pluginID + "/reset",
-				Description: "Reset all persisted token usage statistics.",
+				Method:      http.MethodGet,
+				Path:        "/plugins/" + pluginID + "/stats/trends",
+				Description: "Read downsampled per-model token trends.",
+			},
+			{
+				Method:      http.MethodGet,
+				Path:        "/plugins/" + pluginID + "/stats/groups",
+				Description: "Read detailed dimension statistics.",
+			},
+			{
+				Method:      http.MethodGet,
+				Path:        "/plugins/" + pluginID + "/requests",
+				Description: "Read paginated per-request token usage details.",
+			},
+			{
+				Method:      http.MethodGet,
+				Path:        "/plugins/" + pluginID + "/costs",
+				Description: "Read exact per-request-derived estimated cost statistics.",
+			},
+			{
+				Method:      http.MethodGet,
+				Path:        "/plugins/" + pluginID + "/exchange-rate",
+				Description: "Read the cached latest USD to CNY exchange rate for dashboard display.",
+			},
+			{
+				Method:      http.MethodGet,
+				Path:        "/plugins/" + pluginID + "/prices",
+				Description: "Read persisted model token prices for the plugin dashboard.",
 			},
 			{
 				Method:      http.MethodPut,
@@ -131,6 +130,31 @@ func (r *pluginRuntime) registerManagement(raw []byte) (managementRegistrationRe
 				Method:      http.MethodPost,
 				Path:        "/plugins/" + pluginID + "/prices/sync",
 				Description: "Synchronize CLIProxyAPI model prices from models.dev.",
+			},
+			{
+				Method:      http.MethodGet,
+				Path:        "/plugins/" + pluginID + "/preferences",
+				Description: "Read dashboard table preferences.",
+			},
+			{
+				Method:      http.MethodPost,
+				Path:        "/plugins/" + pluginID + "/preferences",
+				Description: "Persist dashboard table and time-range preferences.",
+			},
+			{
+				Method:      http.MethodGet,
+				Path:        "/plugins/" + pluginID + "/api-key-info",
+				Description: "Read API key tracking state and labels for the dashboard filter.",
+			},
+			{
+				Method:      http.MethodPut,
+				Path:        "/plugins/" + pluginID + "/api-key-labels",
+				Description: "Persist an API key label. Send JSON {ref, label} in the body.",
+			},
+			{
+				Method:      http.MethodPost,
+				Path:        "/plugins/" + pluginID + "/reset",
+				Description: "Reset all persisted token usage statistics.",
 			},
 			{
 				Method:      http.MethodGet,
@@ -148,40 +172,6 @@ func (r *pluginRuntime) registerManagement(raw []byte) (managementRegistrationRe
 				Path:        "/dashboard",
 				Menu:        "Tokens Statistic",
 				Description: "记录并分析各模型的 Token 消耗、费用与响应延迟。",
-			},
-			{Path: "/full-dashboard", Description: "Full-mode dashboard shell without protected data."},
-			{Path: "/full-mode/data", Description: "Capability-protected full-mode data."},
-			{Path: "/full-mode/api-key-labels", Description: "Capability-protected API key label management. Send JSON in the X-API-Key-Label header with GET requests."},
-			{Path: "/full-mode/session/revoke", Description: "Revoke a full-mode capability."},
-			{Path: "/full-mode/prices", Description: "Capability-protected model prices."},
-			{Path: "/full-mode/prices/save", Description: "Capability-protected model price save."},
-			{Path: "/full-mode/prices/sync", Description: "Capability-protected model price synchronization."},
-			{Path: "/full-mode/backup", Description: "Capability-protected database backup download."},
-			{Path: "/full-mode/restore", Description: "Capability-protected database backup restore."},
-			{Path: "/full-mode/reset", Description: "Capability-protected statistics reset."},
-			{Path: "/stats", Description: "Read full token usage statistics for compatible clients."},
-			{Path: "/stats/initial", Description: "Read compact first-screen token usage statistics."},
-			{Path: "/stats/trends", Description: "Read downsampled per-model token trends."},
-			{Path: "/stats/groups", Description: "Read detailed dimension statistics."},
-			{
-				Path:        "/requests",
-				Description: "Read paginated per-request token usage details.",
-			},
-			{
-				Path:        "/costs",
-				Description: "Read exact per-request-derived estimated cost statistics.",
-			},
-			{
-				Path:        "/exchange-rate",
-				Description: "Read the cached latest USD to CNY exchange rate for dashboard display.",
-			},
-			{
-				Path:        "/prices",
-				Description: "Read persisted model token prices for the plugin dashboard.",
-			},
-			{
-				Path:        "/preferences",
-				Description: "Read dashboard table preferences.",
 			},
 		},
 	}, nil
@@ -210,137 +200,77 @@ func (r *pluginRuntime) dispatchManagement(request pluginapi.ManagementRequest, 
 	}
 
 	switch request.Path {
-	case routes.fullModeSessionPath:
-		if !strings.EqualFold(request.Method, http.MethodPost) {
-			return methodNotAllowed(http.MethodPost), nil
-		}
-		return r.fullModeSessionResponse()
 	case routes.dashboardPath:
 		if request.Method != "" && !strings.EqualFold(request.Method, http.MethodGet) {
 			return methodNotAllowed(http.MethodGet), nil
 		}
 		return dashboardResponse(), nil
-	case routes.fullDashboardPath:
-		if request.Method != "" && !strings.EqualFold(request.Method, http.MethodGet) {
-			return methodNotAllowed(http.MethodGet), nil
-		}
-		return fullDashboardResponse(), nil
-	case routes.fullModeDataPath:
-		if !strings.EqualFold(request.Method, http.MethodGet) {
-			return methodNotAllowed(http.MethodGet), nil
-		}
-		return r.fullModeDataResponse(request)
-	case routes.fullModeAPIKeyLabelsPath:
-		// Resource routes are dispatched by the host as GET. Keep PUT support
-		// for direct/plugin-level callers and newer hosts.
-		if !strings.EqualFold(request.Method, http.MethodGet) && !strings.EqualFold(request.Method, http.MethodPut) {
-			return methodNotAllowed(http.MethodGet), nil
-		}
-		return r.setAPIKeyLabelResponse(request)
-	case routes.fullModeSessionRevokePath:
-		if !strings.EqualFold(request.Method, http.MethodGet) {
-			return methodNotAllowed(http.MethodGet), nil
-		}
-		return r.revokeFullModeSessionResponse(request)
-	case routes.fullModePricesPath:
-		if !strings.EqualFold(request.Method, http.MethodGet) {
-			return methodNotAllowed(http.MethodGet), nil
-		}
-		if !r.validFullModeSession(fullModeSessionFromRequest(request)) {
-			return jsonResponse(http.StatusUnauthorized, map[string]string{"error": "full-mode session is missing or expired"}), nil
-		}
-		return r.pricesResponse()
-	case routes.fullModePricesSavePath:
-		if !strings.EqualFold(request.Method, http.MethodGet) {
-			return methodNotAllowed(http.MethodGet), nil
-		}
-		return r.fullModeStagedPayloadResponse(request, 2<<20, "application/json", r.savePricesResponse)
-	case routes.fullModePriceSyncPath:
-		if !strings.EqualFold(request.Method, http.MethodGet) {
-			return methodNotAllowed(http.MethodGet), nil
-		}
-		return r.fullModeStagedPayloadResponse(request, 2<<20, "application/json", r.syncPricesResponse)
-	case routes.fullModeBackupPath:
-		if !strings.EqualFold(request.Method, http.MethodGet) {
-			return methodNotAllowed(http.MethodGet), nil
-		}
-		if !r.validFullModeSession(fullModeSessionFromRequest(request)) {
-			return jsonResponse(http.StatusUnauthorized, map[string]string{"error": "full-mode session is missing or expired"}), nil
-		}
-		return r.backupResponse()
-	case routes.fullModeRestorePath:
-		if !strings.EqualFold(request.Method, http.MethodGet) {
-			return methodNotAllowed(http.MethodGet), nil
-		}
-		return r.fullModeRestoreResponse(request)
-	case routes.fullModeResetPath:
-		if !strings.EqualFold(request.Method, http.MethodPost) {
-			return methodNotAllowed(http.MethodPost), nil
-		}
-		if !r.validFullModeSession(fullModeSessionFromRequest(request)) {
-			return jsonResponse(http.StatusUnauthorized, map[string]string{"error": "full-mode session is missing or expired"}), nil
-		}
-		return r.resetResponse(request)
-	case routes.statsPath, routes.resourceStatsPath:
+	case routes.statsPath:
 		if !strings.EqualFold(request.Method, http.MethodGet) {
 			return methodNotAllowed(http.MethodGet), nil
 		}
 		return r.statsResponse(request)
-	case routes.resourceStatsInitialPath:
+	case routes.statsInitialPath:
 		if !strings.EqualFold(request.Method, http.MethodGet) {
 			return methodNotAllowed(http.MethodGet), nil
 		}
 		return r.initialStatsResponse(request)
-	case routes.resourceStatsTrendPath:
+	case routes.statsTrendPath:
 		if !strings.EqualFold(request.Method, http.MethodGet) {
 			return methodNotAllowed(http.MethodGet), nil
 		}
 		return r.statsTrendResponse(request)
-	case routes.resourceStatsGroupsPath:
+	case routes.statsGroupsPath:
 		if !strings.EqualFold(request.Method, http.MethodGet) {
 			return methodNotAllowed(http.MethodGet), nil
 		}
 		return r.groupsStatsResponse(request)
-	case routes.resourceRequestsPath:
+	case routes.requestsPath:
 		if !strings.EqualFold(request.Method, http.MethodGet) {
 			return methodNotAllowed(http.MethodGet), nil
 		}
 		return r.requestsResponse(request)
-	case routes.resourceCostsPath:
+	case routes.costsPath:
 		if !strings.EqualFold(request.Method, http.MethodGet) {
 			return methodNotAllowed(http.MethodGet), nil
 		}
 		return r.costsResponse(request)
-	case routes.resourceExchangeRatePath:
+	case routes.exchangeRatePath:
 		if !strings.EqualFold(request.Method, http.MethodGet) {
 			return methodNotAllowed(http.MethodGet), nil
 		}
 		return r.exchangeRateResponse()
-	case routes.resourcePricesPath:
-		if !strings.EqualFold(request.Method, http.MethodGet) {
-			return methodNotAllowed(http.MethodGet), nil
-		}
-		return r.pricesResponse()
-	case routes.resourcePreferencesPath:
-		if !strings.EqualFold(request.Method, http.MethodGet) {
-			return methodNotAllowed(http.MethodGet), nil
-		}
-		return r.preferencesResponse(request)
-	case routes.preferencesSavePath:
-		if !strings.EqualFold(request.Method, http.MethodPost) {
-			return methodNotAllowed(http.MethodPost), nil
-		}
-		return r.saveDashboardPreferencesResponse(request)
 	case routes.pricesPath:
-		if !strings.EqualFold(request.Method, http.MethodPut) {
-			return methodNotAllowed(http.MethodPut), nil
+		if strings.EqualFold(request.Method, http.MethodGet) {
+			return r.pricesResponse()
 		}
-		return r.savePricesResponse(request)
+		if strings.EqualFold(request.Method, http.MethodPut) {
+			return r.savePricesResponse(request)
+		}
+		return methodNotAllowed(http.MethodGet + ", " + http.MethodPut), nil
 	case routes.priceSyncPath:
 		if !strings.EqualFold(request.Method, http.MethodPost) {
 			return methodNotAllowed(http.MethodPost), nil
 		}
 		return r.syncPricesResponse(request)
+	case routes.preferencesPath:
+		if strings.EqualFold(request.Method, http.MethodGet) {
+			return r.preferencesResponse(request)
+		}
+		if strings.EqualFold(request.Method, http.MethodPost) {
+			return r.saveDashboardPreferencesResponse(request)
+		}
+		return methodNotAllowed(http.MethodGet + ", " + http.MethodPost), nil
+	case routes.apiKeyInfoPath:
+		if !strings.EqualFold(request.Method, http.MethodGet) {
+			return methodNotAllowed(http.MethodGet), nil
+		}
+		return r.apiKeyInfoResponse()
+	case routes.apiKeyLabelsPath:
+		if !strings.EqualFold(request.Method, http.MethodPut) && !strings.EqualFold(request.Method, http.MethodGet) {
+			return methodNotAllowed(http.MethodPut), nil
+		}
+		return r.setAPIKeyLabelResponse(request)
 	case routes.resetPath:
 		if !strings.EqualFold(request.Method, http.MethodPost) {
 			return methodNotAllowed(http.MethodPost), nil
@@ -362,13 +292,12 @@ func (r *pluginRuntime) dispatchManagement(request pluginapi.ManagementRequest, 
 }
 
 func (r *pluginRuntime) statsResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
-	fullMode := r.validFullModeSession(fullModeSessionFromRequest(request))
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.store == nil {
 		return jsonResponse(http.StatusServiceUnavailable, map[string]any{"error": "storage is not initialized"}), nil
 	}
-	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, fullMode, r.store)
+	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, r.store)
 	if err != nil {
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
@@ -382,10 +311,10 @@ func (r *pluginRuntime) statsResponse(request pluginapi.ManagementRequest) (plug
 		return jsonResponse(status, map[string]any{"error": err.Error()}), nil
 	}
 	_, generations := r.store.APIKeyCryptoState()
-	return r.sensitiveJSONResponse(http.StatusOK, &stats, fullMode, r.crypto, generations), nil
+	return r.sensitiveJSONResponse(http.StatusOK, &stats, r.crypto, generations), nil
 }
 
-func (r *pluginRuntime) statsFilter(request pluginapi.ManagementRequest, fullMode bool) (usageRange, usageFilter, error) {
+func (r *pluginRuntime) statsFilter(request pluginapi.ManagementRequest) (usageRange, usageFilter, error) {
 	queryRange, err := usageRangeFromQuery(request.Query.Get("range"), request.Query.Get("start"), request.Query.Get("end"), time.Now().UTC())
 	if err != nil {
 		return usageRange{}, usageFilter{}, err
@@ -393,7 +322,7 @@ func (r *pluginRuntime) statsFilter(request pluginapi.ManagementRequest, fullMod
 	if r.store == nil {
 		return usageRange{}, usageFilter{}, withStatus(http.StatusServiceUnavailable, "storage is not initialized")
 	}
-	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, fullMode, r.store)
+	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, r.store)
 	if err != nil {
 		return usageRange{}, usageFilter{}, err
 	}
@@ -401,10 +330,9 @@ func (r *pluginRuntime) statsFilter(request pluginapi.ManagementRequest, fullMod
 }
 
 func (r *pluginRuntime) initialStatsResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
-	fullMode := r.validFullModeSession(fullModeSessionFromRequest(request))
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	queryRange, filter, err := r.statsFilter(request, fullMode)
+	queryRange, filter, err := r.statsFilter(request)
 	if err != nil {
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
@@ -413,14 +341,13 @@ func (r *pluginRuntime) initialStatsResponse(request pluginapi.ManagementRequest
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	_, generations := r.store.APIKeyCryptoState()
-	return r.sensitiveJSONResponse(http.StatusOK, &stats, fullMode, r.crypto, generations), nil
+	return r.sensitiveJSONResponse(http.StatusOK, &stats, r.crypto, generations), nil
 }
 
 func (r *pluginRuntime) statsTrendResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
-	fullMode := r.validFullModeSession(fullModeSessionFromRequest(request))
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	queryRange, filter, err := r.statsFilter(request, fullMode)
+	queryRange, filter, err := r.statsFilter(request)
 	if err != nil {
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
@@ -432,10 +359,9 @@ func (r *pluginRuntime) statsTrendResponse(request pluginapi.ManagementRequest) 
 }
 
 func (r *pluginRuntime) groupsStatsResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
-	fullMode := r.validFullModeSession(fullModeSessionFromRequest(request))
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	queryRange, filter, err := r.statsFilter(request, fullMode)
+	queryRange, filter, err := r.statsFilter(request)
 	if err != nil {
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
@@ -487,7 +413,7 @@ func (r *pluginRuntime) groupsStatsResponse(request pluginapi.ManagementRequest)
 	}
 	stats.Items = stats.Items[offset:end]
 	_, generations := r.store.APIKeyCryptoState()
-	return r.sensitiveJSONResponse(http.StatusOK, &stats, fullMode, r.crypto, generations), nil
+	return r.sensitiveJSONResponse(http.StatusOK, &stats, r.crypto, generations), nil
 }
 
 func sortGroupStats(items []GroupStats, sortKey, direction string, aux map[string]groupSortAux) error {
@@ -629,7 +555,6 @@ func (r *pluginRuntime) groupSortValues(queryRange usageRange, filter usageFilte
 }
 
 func (r *pluginRuntime) requestsResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
-	fullMode := r.validFullModeSession(fullModeSessionFromRequest(request))
 	queryRange, err := usageRangeFromQuery(request.Query.Get("range"), request.Query.Get("start"), request.Query.Get("end"), time.Now().UTC())
 	if err != nil {
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
@@ -647,7 +572,7 @@ func (r *pluginRuntime) requestsResponse(request pluginapi.ManagementRequest) (p
 	if r.store == nil {
 		return jsonResponse(http.StatusServiceUnavailable, map[string]any{"error": "storage is not initialized"}), nil
 	}
-	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, fullMode, r.store)
+	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, r.store)
 	if err != nil {
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
@@ -656,11 +581,10 @@ func (r *pluginRuntime) requestsResponse(request pluginapi.ManagementRequest) (p
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	_, generations := r.store.APIKeyCryptoState()
-	return r.sensitiveJSONResponse(http.StatusOK, &page, fullMode, r.crypto, generations), nil
+	return r.sensitiveJSONResponse(http.StatusOK, &page, r.crypto, generations), nil
 }
 
 func (r *pluginRuntime) costsResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
-	fullMode := r.validFullModeSession(fullModeSessionFromRequest(request))
 	queryRange, err := usageRangeFromQuery(request.Query.Get("range"), request.Query.Get("start"), request.Query.Get("end"), time.Now().UTC())
 	if err != nil {
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
@@ -670,7 +594,7 @@ func (r *pluginRuntime) costsResponse(request pluginapi.ManagementRequest) (plug
 	if r.store == nil {
 		return jsonResponse(http.StatusServiceUnavailable, map[string]any{"error": "storage is not initialized"}), nil
 	}
-	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, fullMode, r.store)
+	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, r.store)
 	if err != nil {
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
@@ -679,17 +603,14 @@ func (r *pluginRuntime) costsResponse(request pluginapi.ManagementRequest) (plug
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	_, generations := r.store.APIKeyCryptoState()
-	return r.sensitiveJSONResponse(http.StatusOK, &costs, fullMode, r.crypto, generations), nil
+	return r.sensitiveJSONResponse(http.StatusOK, &costs, r.crypto, generations), nil
 }
 
-func apiKeyIdentitiesFromRequest(request pluginapi.ManagementRequest, fullMode bool, store *Store) ([]string, error) {
+func apiKeyIdentitiesFromRequest(request pluginapi.ManagementRequest, store *Store) ([]string, error) {
 	refs := nonEmptyQueryValues(request.Query["api_key_ref"])
 	hashes := nonEmptyQueryValues(request.Query["api_key_hash"])
 	if len(refs) == 0 && len(hashes) == 0 {
 		return nil, nil
-	}
-	if !fullMode {
-		return nil, withStatus(http.StatusForbidden, "API key filtering requires a full-mode session")
 	}
 	if len(refs) > 0 && len(hashes) > 0 {
 		return nil, withStatus(http.StatusBadRequest, "api_key_ref and api_key_hash cannot be used together")
@@ -765,16 +686,7 @@ func (r *pluginRuntime) pricesResponse() (pluginapi.ManagementResponse, error) {
 	return jsonResponse(http.StatusOK, priceBook), nil
 }
 
-// Plugin resource routes are dispatched by the host as GET-only. Keep the
-// save=1 form as an explicit compatibility path for existing dashboards while
-// new callers use the management POST route.
 func (r *pluginRuntime) preferencesResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
-	if request.Query.Get("save") != "" {
-		return r.saveDashboardPreferencesLegacyResponse(request)
-	}
-	if len(request.Query) != 0 {
-		return jsonResponse(http.StatusBadRequest, map[string]any{"error": "save must be 1 when preference values are supplied"}), nil
-	}
 	r.mu.RLock()
 	store := r.store
 	r.mu.RUnlock()
@@ -797,14 +709,6 @@ func (r *pluginRuntime) saveDashboardPreferencesResponse(request pluginapi.Manag
 		return jsonResponse(http.StatusRequestEntityTooLarge, map[string]any{"error": "dashboard preferences JSON is too large"}), nil
 	}
 	preferences, err := dashboardPreferencesFromBody(request.Body)
-	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
-	}
-	return r.persistDashboardPreferences(preferences)
-}
-
-func (r *pluginRuntime) saveDashboardPreferencesLegacyResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
-	preferences, err := dashboardPreferencesFromQuery(request.Query)
 	if err != nil {
 		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
@@ -835,79 +739,6 @@ func dashboardPreferencesFromBody(raw []byte) (DashboardPreferences, error) {
 		return DashboardPreferences{}, withStatus(http.StatusBadRequest, "%v", err)
 	}
 	return normalized, nil
-}
-
-func dashboardPreferencesFromQuery(query map[string][]string) (DashboardPreferences, error) {
-	allowed := map[string]struct{}{
-		"save": {}, "request_page_size": {}, "dimension_page_size": {},
-		"hidden_request_column": {}, "hidden_dimension_column": {}, "time_range_mode": {},
-		"token_display_mode": {}, "time_range_start": {}, "time_range_end": {},
-	}
-	for key := range query {
-		if _, ok := allowed[key]; !ok {
-			return DashboardPreferences{}, withStatus(http.StatusBadRequest, "unsupported dashboard preference query parameter %q", key)
-		}
-	}
-	if values := query["save"]; len(values) != 1 || values[0] != "1" {
-		return DashboardPreferences{}, withStatus(http.StatusBadRequest, "save must be 1")
-	}
-	requestPageSize, err := parseDashboardPageSize(query, "request_page_size")
-	if err != nil {
-		return DashboardPreferences{}, err
-	}
-	dimensionPageSize, err := parseDashboardPageSize(query, "dimension_page_size")
-	if err != nil {
-		return DashboardPreferences{}, err
-	}
-	timeRangeMode, err := optionalDashboardPreference(query, "time_range_mode")
-	if err != nil {
-		return DashboardPreferences{}, err
-	}
-	tokenDisplayMode, err := optionalDashboardPreference(query, "token_display_mode")
-	if err != nil {
-		return DashboardPreferences{}, err
-	}
-	timeRangeStart, err := optionalDashboardPreference(query, "time_range_start")
-	if err != nil {
-		return DashboardPreferences{}, err
-	}
-	timeRangeEnd, err := optionalDashboardPreference(query, "time_range_end")
-	if err != nil {
-		return DashboardPreferences{}, err
-	}
-	return DashboardPreferences{
-		RequestPageSize:        requestPageSize,
-		DimensionPageSize:      dimensionPageSize,
-		HiddenRequestColumns:   append([]string{}, query["hidden_request_column"]...),
-		HiddenDimensionColumns: append([]string{}, query["hidden_dimension_column"]...),
-		TimeRangeMode:          timeRangeMode,
-		TokenDisplayMode:       tokenDisplayMode,
-		TimeRangeStart:         timeRangeStart,
-		TimeRangeEnd:           timeRangeEnd,
-	}, nil
-}
-
-func optionalDashboardPreference(query map[string][]string, name string) (string, error) {
-	values := query[name]
-	if len(values) > 1 {
-		return "", withStatus(http.StatusBadRequest, "%s must be supplied at most once", name)
-	}
-	if len(values) == 0 {
-		return "", nil
-	}
-	return values[0], nil
-}
-
-func parseDashboardPageSize(query map[string][]string, name string) (int, error) {
-	values := query[name]
-	if len(values) != 1 {
-		return 0, withStatus(http.StatusBadRequest, "%s must be supplied exactly once", name)
-	}
-	value, err := strconv.Atoi(values[0])
-	if err != nil || value < 1 || value > maxDashboardPageSize {
-		return 0, withStatus(http.StatusBadRequest, "%s must be an integer between 1 and %d", name, maxDashboardPageSize)
-	}
-	return value, nil
 }
 
 func (r *pluginRuntime) savePricesResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {

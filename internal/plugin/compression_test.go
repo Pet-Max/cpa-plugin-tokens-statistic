@@ -88,6 +88,11 @@ func TestMaybeCompressResponse(t *testing.T) {
 		t.Fatal("compression mutated the original response headers")
 	}
 
+	compressedManagement := maybeCompressResponse(pluginapi.ManagementRequest{Path: "/v0/management/plugins/test/stats", Headers: baseRequest.Headers}, baseResponse, config)
+	if compressedManagement.Headers.Get("Content-Encoding") != "gzip" {
+		t.Fatalf("management JSON route was not compressed: %+v", compressedManagement.Headers)
+	}
+
 	tests := []struct {
 		name     string
 		request  pluginapi.ManagementRequest
@@ -95,7 +100,6 @@ func TestMaybeCompressResponse(t *testing.T) {
 		config   Config
 	}{
 		{name: "disabled", request: baseRequest, response: baseResponse, config: Config{CompressionMinBytes: 1}},
-		{name: "management route", request: pluginapi.ManagementRequest{Path: "/v0/management/plugins/test/stats", Headers: baseRequest.Headers}, response: baseResponse, config: config},
 		{name: "client without gzip", request: pluginapi.ManagementRequest{Path: baseRequest.Path}, response: baseResponse, config: config},
 		{name: "below threshold", request: baseRequest, response: baseResponse, config: Config{CompressionEnabled: true, CompressionMinBytes: len(body) + 1}},
 		{name: "already encoded", request: baseRequest, response: responseWithHeader(baseResponse, "Content-Encoding", "br"), config: config},
@@ -155,8 +159,11 @@ func TestHandleManagementCompressionScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if management.Headers.Get("Content-Encoding") != "" || management.StatusCode != http.StatusNotFound {
+	if management.Headers.Get("Content-Encoding") != "gzip" || management.StatusCode != http.StatusNotFound {
 		t.Fatalf("management response = %+v", management)
+	}
+	if body := gunzipResponseBody(t, management.Body); !json.Valid(body) {
+		t.Fatalf("decompressed 404 body is not JSON: %q", body)
 	}
 }
 
@@ -203,9 +210,9 @@ func TestPublicJSONRoutesCompress(t *testing.T) {
 		store:  store,
 		config: config,
 		routes: registeredRoutes{
-			pluginID:          "test",
-			resourceStatsPath: "/v0/resource/plugins/test/stats",
-			resourceCostsPath: "/v0/resource/plugins/test/costs",
+			pluginID:  "test",
+			statsPath: "/v0/management/plugins/test/stats",
+			costsPath: "/v0/management/plugins/test/costs",
 		},
 	}
 	defer runtime.shutdown()
@@ -217,7 +224,7 @@ func TestPublicJSONRoutesCompress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, path := range []string{runtime.routes.resourceStatsPath, runtime.routes.resourceCostsPath} {
+	for _, path := range []string{runtime.routes.statsPath, runtime.routes.costsPath} {
 		raw, err := json.Marshal(pluginapi.ManagementRequest{
 			Method:  http.MethodGet,
 			Path:    path,

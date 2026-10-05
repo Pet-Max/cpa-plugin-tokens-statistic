@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $rootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$version = if ($env:VERSION) { $env:VERSION } else { "v0.1.0" }
+$version = if ($env:VERSION) { $env:VERSION } else { "v0.1.1" }
 # Store assets carry the version without the leading "v" (e.g. tokens-statistic_0.1.0_windows_amd64.zip).
 $releaseVersion = $version.TrimStart("v")
 $releaseDir = Join-Path $rootDir "dist\release\$version"

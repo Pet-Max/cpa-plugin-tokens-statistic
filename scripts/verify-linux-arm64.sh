@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DIST_DIR="$ROOT_DIR/dist"
-VERSION=${VERSION:-v0.1.0}
+VERSION=${VERSION:-v0.1.1}
 INSTALL_ARTIFACT=${1:-"$DIST_DIR/tokens-statistic.so"}
 RELEASE_ARTIFACT=${2:-"$DIST_DIR/tokens-statistic-${VERSION}-linux-arm64.so"}
 HEADER="${RELEASE_ARTIFACT%.so}.h"

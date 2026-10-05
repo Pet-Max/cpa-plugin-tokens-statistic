@@ -9,6 +9,7 @@ if (!htmlPath || !chromePath) {
 
 const dashboardHTML = await readFile(htmlPath);
 const resourceBase = '/v0/resource/plugins/api-key-layout-browser-test';
+const managementBase = '/v0/management/plugins/api-key-layout-browser-test';
 const server = createServer((request, response) => {
   const url = new URL(request.url, 'http://127.0.0.1');
   const sendJSON = (value) => {
@@ -21,7 +22,7 @@ const server = createServer((request, response) => {
     response.end(dashboardHTML);
     return;
   }
-  if (url.pathname === `${resourceBase}/full-mode/data`) {
+  if (url.pathname === `${managementBase}/api-key-info`) {
     sendJSON({
       api_key_tracking_enabled: true,
       api_key_uses_default_secret: false,
@@ -29,11 +30,11 @@ const server = createServer((request, response) => {
     });
     return;
   }
-  if (url.pathname === `${resourceBase}/preferences`) {
+  if (url.pathname === `${managementBase}/preferences`) {
     sendJSON({});
     return;
   }
-  if (url.pathname === `${resourceBase}/stats/initial`) {
+  if (url.pathname === `${managementBase}/stats/initial`) {
     sendJSON({
       generated_at: '2026-09-07T00:00:00.000Z',
       last_used: '2026-09-07T00:00:00.000Z',
@@ -46,19 +47,19 @@ const server = createServer((request, response) => {
     });
     return;
   }
-  if (url.pathname === `${resourceBase}/stats/trends`) {
+  if (url.pathname === `${managementBase}/stats/trends`) {
     sendJSON({ model_series: [], bucket_seconds: 86400 });
     return;
   }
-  if (url.pathname === `${resourceBase}/stats/groups` || url.pathname === `${resourceBase}/requests`) {
+  if (url.pathname === `${managementBase}/stats/groups` || url.pathname === `${managementBase}/requests`) {
     sendJSON({ items: [], total: 0 });
     return;
   }
-  if (url.pathname === `${resourceBase}/costs`) {
+  if (url.pathname === `${managementBase}/costs`) {
     sendJSON({ summary: { requests: 0, priced_requests: 0, unpriced_requests: 0 }, models: [], price_book_revision: 0 });
     return;
   }
-  if (url.pathname === `${resourceBase}/prices`) {
+  if (url.pathname === `${managementBase}/prices`) {
     sendJSON({ prices: {}, revision: 0 });
     return;
   }
@@ -71,7 +72,7 @@ await new Promise((resolve, reject) => {
 });
 
 const address = server.address();
-const dashboardURL = `http://127.0.0.1:${address.port}${resourceBase}/dashboard#session=layout-test`;
+const dashboardURL = `http://127.0.0.1:${address.port}${resourceBase}/dashboard`;
 const browser = await chromium.launch({ executablePath: chromePath, headless: true });
 
 const readRects = (page, selectors) => page.evaluate((list) => {
@@ -94,21 +95,24 @@ try {
     timezoneId: 'UTC',
     viewport: { width: 1300, height: 800 },
   });
+  // The dashboard resolves its management key before the first data fetch;
+  // seed the per-tab gate storage so the scenario never needs the key dialog.
+  await desktopContext.addInitScript(() => {
+    sessionStorage.setItem('tokens-statistic-key', 'api-key-layout-browser-test-key');
+  });
   const desktopPage = await desktopContext.newPage();
   const desktopErrors = [];
   desktopPage.on('pageerror', (error) => desktopErrors.push(String(error)));
 
-  const dataResponse = desktopPage.waitForResponse((response) => new URL(response.url()).pathname === `${resourceBase}/full-mode/data`);
-  const initialResponse = desktopPage.waitForResponse((response) => new URL(response.url()).pathname === `${resourceBase}/stats/initial`);
+  const dataResponse = desktopPage.waitForResponse((response) => new URL(response.url()).pathname === `${managementBase}/api-key-info`);
+  const initialResponse = desktopPage.waitForResponse((response) => new URL(response.url()).pathname === `${managementBase}/stats/initial`);
   await desktopPage.goto(dashboardURL, { waitUntil: 'domcontentloaded' });
   await Promise.all([dataResponse, initialResponse]);
   await desktopPage.locator('#apiKeyFilterButton').waitFor({ state: 'visible' });
   await desktopPage.locator('#pricingButton').waitFor({ state: 'visible' });
 
-  const desktopRects = await readRects(desktopPage, ['#apiKeyFilter', '#apiKeyFilterButton', '#fullModeButton', '#pricingButton']);
+  const desktopRects = await readRects(desktopPage, ['#apiKeyFilter', '#apiKeyFilterButton', '#pricingButton']);
   const desktopPairs = [
-    ['API Key filter', desktopRects['#apiKeyFilter'], 'full-mode button', desktopRects['#fullModeButton']],
-    ['API Key filter button', desktopRects['#apiKeyFilterButton'], 'full-mode button', desktopRects['#fullModeButton']],
     ['API Key filter', desktopRects['#apiKeyFilter'], 'model-pricing button', desktopRects['#pricingButton']],
     ['API Key filter button', desktopRects['#apiKeyFilterButton'], 'model-pricing button', desktopRects['#pricingButton']],
   ];
@@ -127,12 +131,15 @@ try {
     timezoneId: 'UTC',
     viewport: { width: 430, height: 900 },
   });
+  await mobileContext.addInitScript(() => {
+    sessionStorage.setItem('tokens-statistic-key', 'api-key-layout-browser-test-key');
+  });
   const mobilePage = await mobileContext.newPage();
   const mobileErrors = [];
   mobilePage.on('pageerror', (error) => mobileErrors.push(String(error)));
 
-  const mobileDataResponse = mobilePage.waitForResponse((response) => new URL(response.url()).pathname === `${resourceBase}/full-mode/data`);
-  const mobileInitialResponse = mobilePage.waitForResponse((response) => new URL(response.url()).pathname === `${resourceBase}/stats/initial`);
+  const mobileDataResponse = mobilePage.waitForResponse((response) => new URL(response.url()).pathname === `${managementBase}/api-key-info`);
+  const mobileInitialResponse = mobilePage.waitForResponse((response) => new URL(response.url()).pathname === `${managementBase}/stats/initial`);
   await mobilePage.goto(dashboardURL, { waitUntil: 'domcontentloaded' });
   await Promise.all([mobileDataResponse, mobileInitialResponse]);
   await mobilePage.locator('#apiKeyFilterButton').waitFor({ state: 'visible' });

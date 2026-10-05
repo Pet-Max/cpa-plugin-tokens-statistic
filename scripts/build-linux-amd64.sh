@@ -7,7 +7,7 @@ set -euo pipefail
 # override (for example a native gcc when building on Linux).
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DIST_DIR="$ROOT_DIR/dist"
-VERSION=${VERSION:-v0.1.0}
+VERSION=${VERSION:-v0.1.1}
 PLUGIN_ID=${PLUGIN_ID:-tokens-statistic}
 
 export PATH="/usr/local/go/bin:$PATH"

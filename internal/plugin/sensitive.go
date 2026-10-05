@@ -206,27 +206,26 @@ func parseAPIKeyRef(ref string) (uint64, string, bool) {
 	return generation, hash, true
 }
 
-func (r *pluginRuntime) sensitiveJSONResponse(status int, value Sensitive, fullMode bool, crypto cryptoContext, generations map[uint64]APIKeyCryptoGeneration) pluginapi.ManagementResponse {
-	if fullMode {
-		value.Reveal(func(ciphertext, fingerprint string, generation uint64) (string, string) {
-			metadata, ok := generations[generation]
-			if !ok || metadata.IdentityMissing || metadata.KeyID == "" {
-				return "", apiKeyStatusIdentityMissing
-			}
-			if !crypto.enabled || metadata.KeyID != crypto.keyID || metadata.HashVersion != apiKeyHashVersion {
-				return "", apiKeyStatusGenerationUnavailable
-			}
-			if ciphertext == "" {
-				return "", apiKeyStatusCiphertextMissing
-			}
-			plaintext, err := decryptAPIKeyForGeneration(crypto, ciphertext, fingerprint, generation)
-			if err != nil || plaintext == "" {
-				return "", apiKeyStatusCiphertextInvalid
-			}
-			return plaintext, apiKeyStatusAvailable
-		})
-	} else {
-		value.Redact()
-	}
+// sensitiveJSONResponse always reveals sensitive fields: every request that
+// reaches the plugin's management handlers has already been authenticated by
+// the host's management-key middleware, so the caller holds admin privileges.
+func (r *pluginRuntime) sensitiveJSONResponse(status int, value Sensitive, crypto cryptoContext, generations map[uint64]APIKeyCryptoGeneration) pluginapi.ManagementResponse {
+	value.Reveal(func(ciphertext, fingerprint string, generation uint64) (string, string) {
+		metadata, ok := generations[generation]
+		if !ok || metadata.IdentityMissing || metadata.KeyID == "" {
+			return "", apiKeyStatusIdentityMissing
+		}
+		if !crypto.enabled || metadata.KeyID != crypto.keyID || metadata.HashVersion != apiKeyHashVersion {
+			return "", apiKeyStatusGenerationUnavailable
+		}
+		if ciphertext == "" {
+			return "", apiKeyStatusCiphertextMissing
+		}
+		plaintext, err := decryptAPIKeyForGeneration(crypto, ciphertext, fingerprint, generation)
+		if err != nil || plaintext == "" {
+			return "", apiKeyStatusCiphertextInvalid
+		}
+		return plaintext, apiKeyStatusAvailable
+	})
 	return jsonResponse(status, value)
 }

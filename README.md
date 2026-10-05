@@ -10,11 +10,12 @@
 
 
 
+
 Tokens Statistic 是一个 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 用量统计插件。安装后，管理中心会新增「Tokens Statistic」页面，每次模型调用的模型、Token 数、延迟、成败与缓存命中都会被记录，并以趋势图和明细表呈现，支持任意时间范围查询。所有数据保存在本地数据库，不上传。
 
 ## 界面预览
 
-**仪表盘总览（普通模式）**
+**仪表盘总览**
 
 ![仪表盘总览：概览卡片与 Tokens 分析趋势](images/dashboard-overview.png)
 
@@ -22,7 +23,7 @@ Tokens Statistic 是一个 [CLIProxyAPI](https://github.com/router-for-me/CLIPro
 |:-:|:-:|
 | ![模型明细](images/dashboard-dimensions.png) | ![请求明细](images/dashboard-requests.png) |
 
-**模型价格与同步（完整模式）**
+**模型价格与同步**
 
 ![模型价格与同步](images/full-mode-pricing.png)
 
@@ -34,7 +35,7 @@ Tokens Statistic 是一个 [CLIProxyAPI](https://github.com/router-for-me/CLIPro
 - 时间范围支持今天、最近 5 小时 / 7 天 / 30 天、本月及自定义区间
 - 趋势图支持分钟至月聚合，滚轮缩放与平移
 - 表格分页、排序、列显示偏好持久化
-- 完整模式支持按 API Key 多选筛选（并集）与标签管理
+- 支持按 API Key 多选筛选（并集）与标签管理
 - Token 单位完整值 / K / M / B 切换并持久化
 - 跟随管理中心主题与浏览器语言，内置简体中文、繁体中文、英文、俄文
 - 单文件插件，支持Linux、Mac与Windows
@@ -61,7 +62,6 @@ plugins:
       retention: 365    # 逐分钟聚合与请求明细的保留天数（1–3650），默认 365
       flush: 5s         # 批量写盘间隔（1s–1h）。小主机（NAS/SD 卡等写入敏感设备）推荐值；省略此行 = 每条请求立即落库（默认）
       secret: "123456"  # API Key 加密密钥。123456 即默认值，仅建议本机测试；公开部署须改为不少于 32 字节的随机串
-      session_ttl: 15   # 完整模式会话有效期（分钟，1–1440），默认 15
 ```
 
 4. 字段说明：
@@ -72,9 +72,19 @@ plugins:
 | `retention` | `365` | 逐分钟聚合与请求明细的保留天数（1–3650），过期自动清理 |
 | `flush` | 空 | 留空表示每条请求立即落库；填写后按间隔批量写盘（1s–1h）。小主机或高频调用建议 5s；突发流量由内部 100 条/批上限自动摊平 |
 | `secret` | `123456` | API Key 加密与指纹密钥，自定义须不少于 32 字节。公开部署必须修改；留空则完全禁用 API Key 追踪 |
-| `session_ttl` | `15` | 完整模式会话有效期，单位分钟（1–1440） |
 
-## 构建（开发）
+## 构建
+
+构建分两条路：**本地构建**给自己测试看，**CI 发布构建**对外发版。
+
+| | 本地构建 | CI 发布构建 |
+|:--|:--|:--|
+| 平台 | 4 个（Windows、Linux × amd64/arm64） | 6 个（再加上 macOS amd64/arm64） |
+| 怎么触发 | 手动跑 `scripts/` 里的脚本 | 推送 `v*` 标签后自动执行 |
+| 产物去向 | 留在本机 `dist/`，不进 git、不上传 | 自动挂到 GitHub Release |
+| 用途 | 本机验证、真机冒烟测试 | 正式发布，供用户下载 |
+
+### 本地构建（4 平台，用于本地测试）
 
 环境要求：Go 1.26+、`CGO_ENABLED=1`；交叉编译推荐 [zig](https://zig.dev)，Windows 也可用 MinGW-w64，Linux arm64 也可用 aarch64-linux-gnu-gcc。
 
@@ -90,7 +100,7 @@ plugins:
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
   CC="zig cc -target x86_64-linux-gnu" \
   go build -buildmode=c-shared -trimpath -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.1.0" \
+  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.1.1" \
   -o tokens-statistic.so .
 ```
 
@@ -110,14 +120,15 @@ go test -count=1 ./...
 
 浏览器回归测试（可选）：需要 Node、Chrome/Edge 与 `npm ci` 安装的 playwright-core，并设置 `CHROME_PATH` 指向浏览器；条件不满足时相关用例自动跳过。
 
-### CI 自动构建
+### CI 发布构建（6 平台，推送标签自动发布）
 
-推送 `v*` 标签后，CI 会自动在 GitHub 的构建服务器上完成全部六个平台的编译并发布 Release（附 checksums.txt）。其中 macOS 的 amd64 与 arm64 两个包在 GitHub 的 macOS 服务器上构建，并在同一环境完成加载冒烟验证；Windows arm64 包在 Windows 服务器上用 zig 交叉编译——本机无需安装 macOS 工具链，也不用单独准备 arm64 工具链。仓库另有工作流自动执行代码质量检查与 CLIProxyAPI 新版本兼容性验证。
+推送 `v*` 标签后，CI 会自动在 GitHub 的构建服务器上完成全部六个平台的编译，自动生成 checksums.txt 并创建 Release。
 
 ## 隐私与安全
 
 - 不存储 prompt、请求正文与响应正文，只保留统计所需的元数据与计数
-- API Key 以密文加指纹形式存储，明文仅在完整模式内按需返回，不写入页面静态内容、日志或浏览器存储
+- API Key 以密文加指纹形式存储，明文仅在通过管理密钥验证的管理接口中按需返回，不写入页面静态内容、日志或浏览器存储
+- 仪表盘数据与全部管理操作都受 CLIProxyAPI 管理密钥保护：在管理中心内打开自动复用已登录身份，独立访问时需输入一次管理密钥（仅保存在当前标签页，关闭即失效）
 - 默认 `secret`（123456）仅适用于本机测试；公开部署请设置不少于 32 字节的随机值。更换 `secret` 后历史密文保留但无法解密显示
 - 留空 `secret` 可完全关闭 API Key 追踪
 

@@ -14,7 +14,7 @@ import (
 const responseCompressionLevel = 2
 
 func maybeCompressResponse(request pluginapi.ManagementRequest, response pluginapi.ManagementResponse, config Config) pluginapi.ManagementResponse {
-	if !config.CompressionEnabled || !strings.HasPrefix(request.Path, "/v0/resource/plugins/") {
+	if !config.CompressionEnabled || !strings.HasPrefix(request.Path, "/v0/resource/plugins/") && !strings.HasPrefix(request.Path, "/v0/management/plugins/") {
 		return response
 	}
 	if !acceptsGzip(request.Headers) || len(response.Body) < config.CompressionMinBytes {

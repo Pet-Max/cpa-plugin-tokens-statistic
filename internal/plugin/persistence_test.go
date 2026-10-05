@@ -390,6 +390,14 @@ func TestModelPricesPersistAcrossRestartAndStatsReset(t *testing.T) {
 	if len(saved) != 2 || saved["gpt-test"].Output != 10 || saved["zero"].Source != priceSourceManual {
 		t.Fatalf("saved prices = %+v", saved)
 	}
+	book, err := store.QueryPriceBook()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if book.SavedAt == nil {
+		t.Fatal("saved_at missing after save")
+	}
+	savedAt := *book.SavedAt
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -403,12 +411,20 @@ func TestModelPricesPersistAcrossRestartAndStatsReset(t *testing.T) {
 	if err != nil || len(prices) != 2 || prices["gpt-test"].Input != 2.5 || prices["zero"].Source != priceSourceManual {
 		t.Fatalf("prices after restart = %+v, %v", prices, err)
 	}
+	book, err = store.QueryPriceBook()
+	if err != nil || book.SavedAt == nil || !book.SavedAt.Equal(savedAt) {
+		t.Fatalf("saved_at after restart = %+v, %v", book.SavedAt, err)
+	}
 	if err := store.Reset(); err != nil {
 		t.Fatal(err)
 	}
 	prices, err = store.QueryModelPrices()
 	if err != nil || len(prices) != 2 || prices["gpt-test"].Output != 10 || prices["zero"].Source != priceSourceManual {
 		t.Fatalf("stats reset removed model prices: %+v, %v", prices, err)
+	}
+	book, err = store.QueryPriceBook()
+	if err != nil || book.SavedAt == nil || !book.SavedAt.Equal(savedAt) {
+		t.Fatalf("stats reset removed saved_at: %+v, %v", book.SavedAt, err)
 	}
 }
 

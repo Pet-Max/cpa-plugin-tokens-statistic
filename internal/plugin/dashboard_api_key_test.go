@@ -7,20 +7,7 @@ import (
 	"testing"
 )
 
-func TestAPIKeyDashboardIsFullModeOnly(t *testing.T) {
-	for _, forbidden := range []string{
-		`id="apiKeyControls"`,
-		`id="apiKeySecurityWarning"`,
-		`id="apiKeyLabelDialog"`,
-		"selectedAPIKeyRef",
-		"params.set('api_key_ref'",
-		`"apiKey.defaultSecretWarning"`,
-		`"table.apiKey"`,
-	} {
-		if strings.Contains(dashboardHTML, forbidden) {
-			t.Fatalf("ordinary dashboard contains API-key contract %q", forbidden)
-		}
-	}
+func TestAPIKeyDashboardContracts(t *testing.T) {
 	for _, required := range []string{
 		`id="apiKeyControls"`,
 		`id="apiKeySecurityWarning"`,
@@ -55,39 +42,37 @@ func TestAPIKeyDashboardIsFullModeOnly(t *testing.T) {
 		"statsInitialURL",
 		"statsTrendsURL",
 		"statsGroupsURL",
-		"String(url).indexOf(statsInitialURL)===0",
-		"String(url).indexOf(statsTrendsURL)===0",
-		"String(url).indexOf(statsGroupsURL)===0",
 		".apikey-security-warning[hidden]{display:none!important}",
 		"api_key_uses_default_secret",
-		"api(resourceBase+'/full-mode/data')",
-		"String(url).indexOf(statsURL)===0",
-		"String(url).indexOf(requestsURL)===0",
-		"String(url).indexOf(costsURL)===0",
-		"'X-Full-Mode-Session':fullModeSession",
-		"'X-API-Key-Label':JSON.stringify({ref:editingAPIKeyRef,label:value})",
+		"api(managementBase+'/api-key-info')",
+		"api(managementBase+'/api-key-labels'",
+		"body:JSON.stringify({ref:editingAPIKeyRef,label:value})",
+		"'Authorization':'Bearer '+managementKey",
 	} {
-		if !strings.Contains(fullDashboardHTML, required) {
+		if !strings.Contains(dashboardHTML, required) {
 			t.Fatalf("full dashboard missing API-key contract %q", required)
 		}
 	}
-	if strings.Contains(fullDashboardHTML, "/*FULL_MODE_APIKEY_") || strings.Contains(dashboardHTML, "/*FULL_MODE_APIKEY_") {
+	if strings.Contains(dashboardHTML, "/*FULL_MODE_APIKEY_") {
 		t.Fatal("generated dashboard contains unresolved API-key placeholder")
+	}
+	if strings.Contains(dashboardHTML, "X-Full-Mode-Session") || strings.Contains(dashboardHTML, "/full-mode/") {
+		t.Fatal("generated dashboard still references the removed full-mode session flow")
 	}
 }
 
 func TestAPIKeyFilterIsRenderedBesideSourceFilter(t *testing.T) {
-	if strings.Contains(fullDashboardHTML, "/*FULL_MODE_APIKEY_FILTER*/") {
+	if strings.Contains(dashboardHTML, "/*FULL_MODE_APIKEY_FILTER*/") {
 		t.Fatal("full dashboard contains unresolved API-key filter placeholder")
 	}
-	rangeButtonIndex := strings.Index(fullDashboardHTML, `id="rangeButton"`)
-	apiKeyIndex := strings.Index(fullDashboardHTML, `id="apiKeyFilter"`)
+	rangeButtonIndex := strings.Index(dashboardHTML, `id="rangeButton"`)
+	apiKeyIndex := strings.Index(dashboardHTML, `id="apiKeyFilter"`)
 	rangeButtonEnd := rangeButtonIndex + len(`id="rangeButton"`)
 	if rangeButtonIndex < 0 || apiKeyIndex < 0 || apiKeyIndex < rangeButtonEnd {
 		t.Fatal("API-key filter is not rendered after the range control in the top filters")
 	}
-	if strings.Contains(fullDashboardHTML, `class="apikey-controls"`) && strings.Contains(fullDashboardHTML, `id="apiKeyFilter"`) {
-		controlsIndex := strings.Index(fullDashboardHTML, `class="apikey-controls"`)
+	if strings.Contains(dashboardHTML, `class="apikey-controls"`) && strings.Contains(dashboardHTML, `id="apiKeyFilter"`) {
+		controlsIndex := strings.Index(dashboardHTML, `class="apikey-controls"`)
 		if controlsIndex < apiKeyIndex {
 			t.Fatal("API-key filter remains inside the standalone controls panel")
 		}
@@ -96,7 +81,7 @@ func TestAPIKeyFilterIsRenderedBesideSourceFilter(t *testing.T) {
 		`rangeButton.insertAdjacentElement('afterend',select)`,
 		`select.id='sourceFilter'`,
 	} {
-		if !strings.Contains(fullDashboardHTML, required) {
+		if !strings.Contains(dashboardHTML, required) {
 			t.Fatalf("full dashboard missing source-filter placement contract %q", required)
 		}
 	}
@@ -137,7 +122,7 @@ func TestGeneratedDashboardJavaScriptSyntax(t *testing.T) {
 	if err != nil {
 		t.Skip("node is not available")
 	}
-	for name, html := range map[string]string{"ordinary": dashboardHTML, "full": fullDashboardHTML} {
+	for name, html := range map[string]string{"dashboard": dashboardHTML} {
 		t.Run(name, func(t *testing.T) {
 			remaining := html
 			for index := 0; ; index++ {

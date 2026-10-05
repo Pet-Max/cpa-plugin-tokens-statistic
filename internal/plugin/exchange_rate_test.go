@@ -138,18 +138,21 @@ func TestExchangeRateResourceRoute(t *testing.T) {
 	}))
 	defer server.Close()
 	runtime := &pluginRuntime{
-		routes: registeredRoutes{pluginID: "test", resourceExchangeRatePath: "/v0/resource/plugins/test/exchange-rate"},
+		routes: registeredRoutes{
+			pluginID:         "test",
+			exchangeRatePath: "/v0/management/plugins/test/exchange-rate",
+		},
 		exchangeRates: &exchangeRateService{
 			fetcher: &exchangeRateFetcher{client: server.Client(), url: server.URL},
 			now:     nowUTC,
 		},
 	}
-	request, _ := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: runtime.routes.resourceExchangeRatePath})
+	request, _ := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: runtime.routes.exchangeRatePath})
 	response, err := runtime.handleManagement(request)
 	if err != nil || response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"rate":7.25`) {
 		t.Fatalf("exchange-rate response: %+v, %v", response, err)
 	}
-	request, _ = json.Marshal(pluginapi.ManagementRequest{Method: http.MethodPost, Path: runtime.routes.resourceExchangeRatePath})
+	request, _ = json.Marshal(pluginapi.ManagementRequest{Method: http.MethodPost, Path: runtime.routes.exchangeRatePath})
 	response, err = runtime.handleManagement(request)
 	if err != nil || response.StatusCode != http.StatusMethodNotAllowed || response.Headers.Get("Allow") != http.MethodGet {
 		t.Fatalf("exchange-rate method response: %+v, %v", response, err)

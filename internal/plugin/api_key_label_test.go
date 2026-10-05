@@ -31,24 +31,17 @@ func TestAPIKeyLabelResourceValidationAndPersistence(t *testing.T) {
 		config: config,
 		crypto: ctx,
 		routes: registeredRoutes{
-			pluginID:                 "test",
-			fullModeAPIKeyLabelsPath: "/v0/resource/plugins/test/full-mode/api-key-labels",
-			fullModeDataPath:         "/v0/resource/plugins/test/full-mode/data",
+			pluginID:         "test",
+			apiKeyLabelsPath: "/v0/management/plugins/test/api-key-labels",
+			apiKeyInfoPath:   "/v0/management/plugins/test/api-key-info",
 		},
 	}
 	defer runtime.shutdown()
-	session, err := runtime.createFullModeSession()
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	call := func(method string, body []byte, authorized bool) pluginapi.ManagementResponse {
 		t.Helper()
 		headers := http.Header{"Content-Type": []string{"application/json"}}
-		if authorized {
-			headers.Set("X-Full-Mode-Session", session)
-		}
-		raw, _ := json.Marshal(pluginapi.ManagementRequest{Method: method, Path: runtime.routes.fullModeAPIKeyLabelsPath, Headers: headers, Body: body})
+		raw, _ := json.Marshal(pluginapi.ManagementRequest{Method: method, Path: runtime.routes.apiKeyLabelsPath, Headers: headers, Body: body})
 		response, callErr := runtime.handleManagement(raw)
 		if callErr != nil {
 			t.Fatal(callErr)
@@ -57,9 +50,6 @@ func TestAPIKeyLabelResourceValidationAndPersistence(t *testing.T) {
 	}
 
 	validBody, _ := json.Marshal(map[string]string{"ref": ref, "label": "Primary client"})
-	if response := call(http.MethodPut, validBody, false); response.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("unauthorized status = %d", response.StatusCode)
-	}
 	if response := call(http.MethodPost, validBody, true); response.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("wrong method status = %d", response.StatusCode)
 	}
@@ -88,9 +78,9 @@ func TestAPIKeyLabelResourceValidationAndPersistence(t *testing.T) {
 	if response := call(http.MethodPut, validBody, true); response.StatusCode != http.StatusOK {
 		t.Fatalf("save status = %d body=%s", response.StatusCode, response.Body)
 	}
-	getHeaders := http.Header{"X-Full-Mode-Session": []string{session}}
+	getHeaders := http.Header{}
 	getHeaders.Set("X-API-Key-Label", `{"ref":"`+ref+`","label":"GET client"}`)
-	getRaw, _ := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: runtime.routes.fullModeAPIKeyLabelsPath, Headers: getHeaders})
+	getRaw, _ := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: runtime.routes.apiKeyLabelsPath, Headers: getHeaders})
 	getResponse, getErr := runtime.handleManagement(getRaw)
 	if getErr != nil || getResponse.StatusCode != http.StatusOK {
 		t.Fatalf("GET save status = %d body=%s err=%v", getResponse.StatusCode, getResponse.Body, getErr)

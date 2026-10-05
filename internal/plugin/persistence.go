@@ -29,6 +29,7 @@ var (
 	modelPriceRevisionKey   = []byte("model_price_revision")
 	modelPriceSettingsKey   = []byte("model_price_sync_settings")
 	modelPriceLastSyncKey   = []byte("model_price_last_sync")
+	modelPriceSavedAtKey    = []byte("model_price_saved_at")
 	dashboardPreferencesKey = []byte("dashboard_preferences")
 	cryptoKeyIDKey          = []byte("crypto_key_id")
 	apiKeyHashVersionKey    = []byte("api_key_hash_version")
@@ -238,6 +239,7 @@ type storeActor struct {
 	priceRevision        uint64
 	priceSyncSettings    PriceSyncSettings
 	lastPriceSync        *PriceSyncMetadata
+	priceSavedAt         *time.Time
 	costGeneration       uint64
 	dashboardPreferences DashboardPreferences
 	apiKeyCiphertexts    map[string]string
@@ -945,6 +947,13 @@ func (a *storeActor) reload() error {
 				return fmt.Errorf("decode model price last sync: %w", err)
 			}
 			a.lastPriceSync = &stored
+		}
+		if raw := meta.Get(modelPriceSavedAtKey); len(raw) > 0 {
+			var stored time.Time
+			if err := json.Unmarshal(raw, &stored); err != nil {
+				return fmt.Errorf("decode model price saved at: %w", err)
+			}
+			a.priceSavedAt = &stored
 		}
 		if raw := meta.Get(lastUsedKey); len(raw) > 0 {
 			a.lastUsed = time.Unix(0, decodeInt64(raw)).UTC()
@@ -2228,6 +2237,7 @@ func (a *storeActor) priceBookResponse() ModelPricesResponse {
 		Prices:        cloneModelPrices(a.modelPrices),
 		SyncSettings:  clonePriceSyncSettings(a.priceSyncSettings),
 		LastSync:      clonePriceSyncMetadata(a.lastPriceSync),
+		SavedAt:       cloneTimePtr(a.priceSavedAt),
 	}
 }
 
@@ -2254,12 +2264,13 @@ func (a *storeActor) saveModelPrices(prices map[string]ModelPrice, settings *Pri
 	if nextRevision == 0 {
 		nextRevision = 1
 	}
-	if err := a.persistPriceBook(next, nextSettings, a.lastPriceSync, nextRevision); err != nil {
+	if err := a.persistPriceBook(next, nextSettings, a.lastPriceSync, nextRevision, now); err != nil {
 		return ModelPricesResponse{}, err
 	}
 	a.modelPrices = cloneModelPrices(next)
 	a.priceSyncSettings = clonePriceSyncSettings(nextSettings)
 	a.priceRevision = nextRevision
+	a.priceSavedAt = cloneTimePtr(&now)
 	return a.priceBookResponse(), nil
 }
 
@@ -2293,17 +2304,18 @@ func (a *storeActor) applyModelPriceSync(prices map[string]ModelPrice, settings 
 	if nextRevision == 0 {
 		nextRevision = 1
 	}
-	if err := a.persistPriceBook(next, settings, &metadata, nextRevision); err != nil {
+	if err := a.persistPriceBook(next, settings, &metadata, nextRevision, metadata.CompletedAt); err != nil {
 		return ModelPricesResponse{}, err
 	}
 	a.modelPrices = cloneModelPrices(next)
 	a.priceSyncSettings = clonePriceSyncSettings(settings)
 	a.lastPriceSync = clonePriceSyncMetadata(&metadata)
 	a.priceRevision = nextRevision
+	a.priceSavedAt = cloneTimePtr(&metadata.CompletedAt)
 	return a.priceBookResponse(), nil
 }
 
-func (a *storeActor) persistPriceBook(prices map[string]ModelPrice, settings PriceSyncSettings, lastSync *PriceSyncMetadata, revision uint64) error {
+func (a *storeActor) persistPriceBook(prices map[string]ModelPrice, settings PriceSyncSettings, lastSync *PriceSyncMetadata, revision uint64, savedAt time.Time) error {
 	encodedPrices, err := json.Marshal(prices)
 	if err != nil {
 		return fmt.Errorf("encode model prices: %w", err)
@@ -2318,6 +2330,10 @@ func (a *storeActor) persistPriceBook(prices map[string]ModelPrice, settings Pri
 		if err != nil {
 			return fmt.Errorf("encode model price last sync: %w", err)
 		}
+	}
+	encodedSavedAt, err := json.Marshal(savedAt.UTC())
+	if err != nil {
+		return fmt.Errorf("encode model price saved at: %w", err)
 	}
 	if err := a.db.Update(func(tx *bolt.Tx) error {
 		meta := tx.Bucket(metaBucket)
@@ -2339,6 +2355,9 @@ func (a *storeActor) persistPriceBook(prices map[string]ModelPrice, settings Pri
 				return err
 			}
 		} else if err := meta.Put(modelPriceLastSyncKey, encodedLastSync); err != nil {
+			return err
+		}
+		if err := meta.Put(modelPriceSavedAtKey, encodedSavedAt); err != nil {
 			return err
 		}
 		return meta.Put(modelPriceRevisionKey, encodeUint64(revision))

@@ -2,7 +2,9 @@ package plugin
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -17,8 +19,11 @@ func TestDashboardUsesBoundedSafeRendering(t *testing.T) {
 		"body.replaceChildren(fragment)",
 		"getElementById('analysisPlot').replaceChildren(fragment)",
 		"var hitLayer=document.getElementById('analysisHitLayer');hitLayer.setAttribute('clip-path','url(#analysisClip)');if(!precomputed)hitLayer.replaceChildren(hitFragment)",
-		"var resourceBase=publicPathPrefix+'/v0/resource/plugins/'",
-		"var statsURL=resourceBase+'/stats'",
+		"var managementBase=publicPathPrefix+'/v0/management/plugins/'",
+		"var statsURL=managementBase+'/stats'",
+		"localStorage.getItem('cli-proxy-auth')",
+		"sessionStorage.getItem('tokens-statistic-key')",
+		"sessionStorage.setItem('tokens-statistic-key',key)",
 		"load(true).catch(function(error)",
 		"window.parent.document.documentElement",
 		"new MutationObserver",
@@ -54,8 +59,10 @@ func TestDashboardUsesBoundedSafeRendering(t *testing.T) {
 		`updated_at:base.updated_at||''`,
 		"replaceChildren.apply",
 		"Math.max.apply",
-		"localStorage",
-		"sessionStorage",
+		// Storage writes/removals are bounded by the exact-count assertions below
+		// and by TestDashboardSecurityContract; clear() stays forbidden outright.
+		"localStorage.clear",
+		"sessionStorage.clear",
 		"data-theme-value",
 		"themePopover",
 		"connectButton",
@@ -77,6 +84,15 @@ func TestDashboardUsesBoundedSafeRendering(t *testing.T) {
 		if strings.Contains(html, forbidden) {
 			t.Fatalf("dashboard contains unsafe pattern %q", forbidden)
 		}
+	}
+	// localStorage: the management-center envelope read, the remembered-key
+	// read, its single obfuscated write, and its two by-name removals.
+	if got := strings.Count(html, "localStorage"); got != 5 {
+		t.Fatalf("localStorage used %d times, want only the cli-proxy-auth read plus the remembered-key read, obfuscated write and by-name removals", got)
+	}
+	// sessionStorage: the per-tab gate key read, write and invalidation.
+	if got := strings.Count(html, "sessionStorage"); got != 3 {
+		t.Fatalf("sessionStorage used %d times, want only the per-tab key read, write and invalidation", got)
 	}
 }
 
@@ -142,18 +158,18 @@ func TestDashboardEnhancesNativeSelectMenus(t *testing.T) {
 }
 
 func TestDashboardIncludesInteractiveAnalyticsFeatures(t *testing.T) {
-	html := fullDashboardHTML
+	html := dashboardHTML
 	for _, required := range []string{
 		`id="granularity"`,
 		`id="tokenUnitButton"`,
-		`var exchangeRateURL=resourceBase+'/exchange-rate'`,
+		`var exchangeRateURL=managementBase+'/exchange-rate'`,
 		`function formatTokenTotal(value)`,
 		`function toggleTokenUnit()`,
 		`B:{suffix:'B',divisor:1e9}`,
 		`k:{suffix:'K',divisor:1e3}`,
 		`order=['full','k','m','B']`,
 		`token_display_mode:tokenDisplayMode`,
-		`params.set('token_display_mode',value.token_display_mode)`,
+		`api(managementBase+'/preferences',{method:'POST'`,
 		`scheduleDashboardPreferencesSave();`,
 		`tokenDisplayModes[value.token_display_mode]?value.token_display_mode:'full'`,
 		`updateTokenUnitButton();updateRangeButton()`,
@@ -191,7 +207,7 @@ func TestDashboardIncludesInteractiveAnalyticsFeatures(t *testing.T) {
 		`function modelCell(row,group)`,
 		`addEventListener('wheel'`,
 		`moneyFormatters[key]`,
-		`var costsURL=resourceBase+'/costs'`,
+		`var costsURL=managementBase+'/costs'`,
 		`function visibleCostSummary()`,
 		`priceEditCacheRead`,
 		`priceEditCacheWrite`,
@@ -207,8 +223,8 @@ func TestDashboardIncludesInteractiveAnalyticsFeatures(t *testing.T) {
 		`async function exportCSV()`,
 		`function exportPNG()`,
 		`id="exportBackup"`,
-		`var backupURL=resourceBase+'/full-mode/backup'`,
-		`var restoreURL=resourceBase+'/full-mode/restore'`,
+		`var backupURL=managementBase+'/backup'`,
+		`var restoreURL=managementBase+'/restore'`,
 		`async function downloadBackup()`,
 		`function restoreBackup()`,
 		`async function confirmAndRestore(file)`,
@@ -239,7 +255,7 @@ func TestDashboardIncludesInteractiveAnalyticsFeatures(t *testing.T) {
 		`.bar-hit:focus-visible`,
 		`Math.floor(plotW/85)`,
 		`id="requestRows"`,
-		`var requestsURL=resourceBase+'/requests'`,
+		`var requestsURL=managementBase+'/requests'`,
 		`async function loadRequests()`,
 		`id="requestPrev"`,
 		`id="requestNext"`,
@@ -273,25 +289,20 @@ func TestDashboardIncludesInteractiveAnalyticsFeatures(t *testing.T) {
 		`sortButton.dataset.dimensionSort=column.key`,
 		`function sortedDimensionGroups(groups)`,
 		`hiddenDimensionColumns=new Set()`,
-		`var preferencesURL=resourceBase+'/preferences'`,
+		`var preferencesURL=managementBase+'/preferences'`,
 		`function dashboardPreferencesPayload()`,
 		`function applyDashboardPreferences(value)`,
 		`async function loadDashboardPreferences()`,
-		`function dashboardPreferencesSaveURL()`,
 		`async function saveDashboardPreferences()`,
 		`function scheduleDashboardPreferencesSave()`,
 		`hidden_request_columns:Array.from(hiddenRequestColumns)`,
 		`hidden_dimension_columns:Array.from(hiddenDimensionColumns)`,
 		`time_range_mode:appliedRangeMode`,
-		`params.set('time_range_mode',value.time_range_mode)`,
-		`params.set('save','1')`,
-		`params.append('hidden_request_column',key)`,
-		`params.append('hidden_dimension_column',key)`,
 		`keepalive:true`,
 		`window.addEventListener('pagehide'`,
 		`loadDashboardPreferences().catch(function(error)`,
 		`function loadGroups(sequence,query)`,
-		`var statsGroupsURL=resourceBase+'/stats/groups'`,
+		`var statsGroupsURL=managementBase+'/stats/groups'`,
 		`params.set('offset',String(dimensionOffset))`,
 		`params.set('sort',dimensionSortKey)`,
 		`renderGroups(page.items,Number(page.total||0))`,
@@ -516,11 +527,11 @@ func TestDashboardAnalysisSeriesRenderContract(t *testing.T) {
 		`if(metric.key==='requests'){var barZone=chartH*0.2;`,
 		`ctx.lineWidth=metric.kind==='percent'?2:(metric.kind==='count'?2:2.5);`,
 	} {
-		if !strings.Contains(fullDashboardHTML, required) {
+		if !strings.Contains(dashboardHTML, required) {
 			t.Fatalf("full dashboard missing analysis export render contract %q", required)
 		}
 	}
-	if strings.Contains(fullDashboardHTML, "'fill-opacity'") {
+	if strings.Contains(dashboardHTML, "'fill-opacity'") {
 		t.Fatal("analysis PNG export still renders area fills; token series must be plain lines")
 	}
 }
@@ -555,7 +566,7 @@ func TestDashboardAnalysisContinuousWindowContract(t *testing.T) {
 		`var windowStart=analysisZoom.size?analysisZoom.start:0,windowSize=analysisZoom.size||data.length,absBase=Math.floor(windowStart),slot=chartW/windowSize;`,
 		`ctx.rect(chartX,chartY-2,chartW,chartH+4);ctx.clip();`,
 	} {
-		if !strings.Contains(fullDashboardHTML, required) {
+		if !strings.Contains(dashboardHTML, required) {
 			t.Fatalf("full dashboard missing analysis export continuous window contract %q", required)
 		}
 	}
@@ -679,7 +690,6 @@ func TestDashboardPreservesReverseProxyPathPrefix(t *testing.T) {
 		`index=path.lastIndexOf(marker)`,
 		`publicPathPrefix:path.slice(0,index)`,
 		`var publicPathPrefix=dashboardRoute.publicPathPrefix`,
-		`var resourceBase=publicPathPrefix+'/v0/resource/plugins/'`,
 		`var managementBase=publicPathPrefix+'/v0/management/plugins/'`,
 		`var modelsURL=publicPathPrefix+'/v1/models'`,
 	} {
@@ -700,12 +710,12 @@ func TestDashboardPreservesReverseProxyPathPrefix(t *testing.T) {
 }
 
 func TestDashboardUsesExactBackendCostsAndPricingSync(t *testing.T) {
-	html := fullDashboardHTML
+	html := dashboardHTML
 	for _, required := range []string{
-		`var costsURL=resourceBase+'/costs'`,
-		`var pricesURL=resourceBase+'/full-mode/prices'`,
-		`var savePricesURL=resourceBase+'/full-mode/prices/save'`,
-		`var syncPricesURL=resourceBase+'/full-mode/prices/sync'`,
+		`var costsURL=managementBase+'/costs'`,
+		`var pricesURL=managementBase+'/prices'`,
+		`var savePricesURL=managementBase+'/prices'`,
+		`var syncPricesURL=managementBase+'/prices/sync'`,
 		`id="pricingDialog"`,
 		`id="cliModelsKeyInput"`,
 		`id="loadCLIModels"`,
@@ -742,8 +752,8 @@ func TestDashboardUsesExactBackendCostsAndPricingSync(t *testing.T) {
 		`mappings`,
 		`last_sync`,
 		`source:'models.dev'`,
-		`fullModePayloadRequest(savePricesURL,{prices:next,sync_settings:settings})`,
-		`fullModePayloadRequest(syncPricesURL,{source:'models.dev',models:models,sync_settings:settings},25000)`,
+		`api(savePricesURL,{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'Bearer '+managementKey},body:JSON.stringify({prices:next,sync_settings:settings})`,
+		`api(syncPricesURL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+managementKey},body:JSON.stringify({source:'models.dev',models:models,sync_settings:settings})`,
 		`value*Number(exchangeRate.rate||0)`,
 		`formatTokenTotal(summary.total_tokens)`,
 		`renderVisuals();await loadRequests();return responses`,
@@ -791,8 +801,10 @@ func TestDashboardUsesExactBackendCostsAndPricingSync(t *testing.T) {
 	for _, forbidden := range []string{
 		`costFor(name,input,output)`,
 		`costFor(`,
-		`localStorage`,
-		`sessionStorage`,
+		// localStorage policy lives in TestDashboardSecurityContract; costs and
+		// prices must never be cached client-side regardless of key name.
+		`localStorage.setItem('tokens-statistic-prices`,
+		`localStorage.setItem('tokens-statistic-cost`,
 		`fetch('https://models.dev`,
 		`fetch("https://models.dev`,
 		`fetch('https://open.er-api.com`,
@@ -821,10 +833,10 @@ func TestDashboardUsesSingleMonthLocalDateRangePicker(t *testing.T) {
 		`id="endTimeButton" class="time-picker-button" type="button" aria-haspopup="dialog"`,
 		`id="startTimePicker" class="time-picker-surface" role="dialog"`,
 		`id="endTimePicker" class="time-picker-surface" role="dialog"`,
-		`data-time-part="hour" type="number" max="23"`,
-		`data-time-part="minute" type="number" max="59"`,
-		`data-time-part="second" type="number" max="59"`,
-		`limit=index===0?23:59,value=Math.min(limit,Math.floor(Number(field.value)));if(value<0)value=limit;`,
+		`data-time-part="hour" type="number"`,
+		`data-time-part="minute" type="number"`,
+		`data-time-part="second" type="number"`,
+		`limit=index===0?23:59,span=limit+1,value=Math.floor(Number(field.value));if(index<0||!Number.isFinite(value))return;value=((value%span)+span)%span;`,
 		`function initializeTimePickers()`,
 		`function closeTimePickers(restoreFocus)`,
 		`function finishTimePickerClose(picker,token)`,
@@ -967,59 +979,345 @@ func TestDashboardResponseHeaders(t *testing.T) {
 	}
 }
 
-func TestFullModeUsesSeparateProtectedDashboard(t *testing.T) {
-	if !strings.Contains(dashboardHTML, `id="fullModeButton"`) || !strings.Contains(dashboardHTML, `id="fullModeDialog"`) {
-		t.Fatal("dashboard must provide a full-mode entry button and dialog")
-	}
-	if !strings.Contains(dashboardHTML, `managementBase+'/full-mode/session'`) || !strings.Contains(dashboardHTML, `method:'POST'`) || !strings.Contains(dashboardHTML, `Authorization':'Bearer '+key`) {
-		t.Fatal("full-mode dialog must create an authenticated full-mode session")
-	}
-	if !strings.Contains(dashboardHTML, `resourceBase+'/full-dashboard#session='+encodeURIComponent(session)`) || strings.Contains(dashboardHTML, `fullModeManagementKey=key`) {
-		t.Fatal("homepage must navigate with the opaque session token without retaining the management key")
-	}
+func TestDashboardSinglePageManagementAuth(t *testing.T) {
+	// v0.1.1 serves one dashboard: every dynamic endpoint moved to the
+	// management-key protected /v0/management/plugins/ family and the
+	// self-issued full-mode session flow was deleted.
 	for _, forbidden := range []string{
-		`id="pricingButton"`, `id="pricingDialog"`, `id="priceList"`, `id="savePricing"`, `id="syncPrices"`,
-		`id="exportButton"`, `id="exportMenu"`, `id="exportCSV"`, `id="exportPNG"`, `id="exportBackup"`, `id="restoreBackup"`, `id="backupDialog"`,
-		`function exportCSV()`, `function exportPNG()`, `function downloadBackup()`, `function restoreBackup()`, `function confirmAndRestore(file)`,
-		`document.getElementById('exportBackup').addEventListener`, `document.getElementById('restoreBackup').addEventListener`,
+		`/full-mode/`, `X-Full-Mode-Session`, `fullMode`, `fullDashboard`, `fullModeSession`,
 	} {
 		if strings.Contains(dashboardHTML, forbidden) {
-			t.Fatalf("normal dashboard must not expose pricing UI %q", forbidden)
+			t.Fatalf("dashboard must not reference the removed full-mode flow %q", forbidden)
 		}
 	}
-	if !strings.Contains(dashboardHTML, `function initializePricingSelectEnhancement(){var list=document.getElementById('priceList');if(!list)return;`) {
-		t.Fatal("normal dashboard must skip pricing select initialization when full-mode pricing UI is absent")
-	}
-	if !strings.Contains(dashboardHTML, `function openDateRange(){closeActiveDropdown(false);if(typeof closeExportMenu==='function')closeExportMenu();`) {
-		t.Fatal("normal dashboard date range picker must not require the removed export menu script")
-	}
-	for _, required := range []string{`var fullModePage=true`, `button.exitFullMode`, `history.replaceState(null,'',window.location.pathname+window.location.search)`} {
-		if !strings.Contains(fullDashboardHTML, required) {
-			t.Fatalf("full dashboard missing %q", required)
+	for _, forbidden := range []string{
+		`id="keyGateDialog"`, `function ensureManagementKey(`, `keyGatePromise`,
+	} {
+		if strings.Contains(dashboardHTML, forbidden) {
+			t.Fatalf("dashboard must not reference the removed key-gate dialog %q", forbidden)
 		}
-	}
-	if !strings.Contains(fullDashboardHTML, `X-Full-Mode-Session`) || !strings.Contains(fullDashboardHTML, `resourceBase+'/full-mode/prices'`) || !strings.Contains(fullDashboardHTML, `function openPricing(){if(!fullModeEnabled||!fullModeSession)return;`) || strings.Contains(fullDashboardHTML, `fullModeManagementKey=key`) {
-		t.Fatal("full dashboard must use the server-issued capability for protected endpoints")
 	}
 	for _, required := range []string{
-		`id="pricingButton" class="control"`, `id="pricingDialog"`, `id="priceList"`, `id="saveSyncSettings"`, `id="syncPrices"`, `id="priceEditDialog"`, `id="addPriceEntry"`,
-		`id="exportButton"`, `id="exportMenu"`, `id="exportCSV"`, `id="exportPNG"`, `id="exportBackup"`, `id="restoreBackup"`, `id="backupDialog"`,
-		`resourceBase+'/full-mode/backup'`, `resourceBase+'/full-mode/restore'`, `async function requireFullModeExportSession()`, `await fullModeBinaryPayloadRequest(restoreURL,file,120000)`,
+		`id="authView"`,
+		`id="authSubmit"`,
+		`id="authKeyInput"`,
+		`id="authRemember"`,
+		`function showAuth(`,
+		`function hideAuth(`,
+		`function submitAuth(`,
+		`function decodeCliProxyAuth()`,
+		`function encodeStorageValue(`,
+		`function readRememberedKey(`,
+		`function forgetStoredKeys(`,
+		`localStorage.getItem('cli-proxy-auth')`,
+		`sessionStorage.getItem('tokens-statistic-key')`,
+		`localStorage.setItem('tokens-statistic-remembered-key',encodeStorageValue(JSON.stringify({key:key})))`,
 	} {
-		if !strings.Contains(fullDashboardHTML, required) {
-			t.Fatalf("full dashboard must provide pricing UI %q", required)
+		if !strings.Contains(dashboardHTML, required) {
+			t.Fatalf("dashboard missing management-auth page contract %q", required)
 		}
 	}
-	if !strings.Contains(fullDashboardHTML, `var resetURL=resourceBase+'/full-mode/reset';`) || !strings.Contains(fullDashboardHTML, `async function resetStats(){if(!fullModeEnabled||!fullModeSession){text('error',t('fullMode.keyRequired'));return;}`) {
-		t.Fatal("full dashboard reset must use the session-protected resource route")
-	}
-	for _, forbidden := range []string{`askBackupManagementKey`, `managementBase+'/backup'`, `managementBase+'/restore'`, `Authorization':'Bearer '+managementKey,'Content-Type':'application/octet-stream'`, `function askManagementKey()`, `id="resetDialog"`, `resetKeyInput`, `Authorization':'Bearer '+managementKey`} {
-		if strings.Contains(fullDashboardHTML, forbidden) {
-			t.Fatalf("full dashboard export must not use a management key %q", forbidden)
+	for _, required := range []string{
+		`id="pricingButton"`, `id="pricingDialog"`, `id="priceList"`, `id="saveSyncSettings"`, `id="syncPrices"`, `id="priceEditDialog"`, `id="addPriceEntry"`,
+		`id="exportButton"`, `id="exportMenu"`, `id="exportCSV"`, `id="exportPNG"`, `id="exportBackup"`, `id="restoreBackup"`, `id="backupDialog"`,
+		`id="resetDialog"`,
+		`var resetURL=managementBase+'/reset'`,
+		`var backupURL=managementBase+'/backup'`,
+		`var restoreURL=managementBase+'/restore'`,
+		`Authorization':'Bearer '+managementKey`,
+	} {
+		if !strings.Contains(dashboardHTML, required) {
+			t.Fatalf("dashboard must keep the protected feature on the single page %q", required)
 		}
 	}
-	if strings.Contains(fullDashboardHTML, `sensitive_data":[]`) {
-		t.Fatal("full dashboard HTML must not embed protected data")
+	if strings.Contains(dashboardHTML, `sensitive_data":[]`) {
+		t.Fatal("dashboard HTML must not embed protected data")
+	}
+}
+
+func TestDashboardAuthGateContract(t *testing.T) {
+	start := strings.Index(dashboardHTML, "async function api(url,options){")
+	end := strings.Index(dashboardHTML, "finally{clearTimeout(timer);}}")
+	if start < 0 || end < 0 || end < start {
+		t.Fatal("api() function not found in dashboard script")
+	}
+	body := dashboardHTML[start:end]
+	guard := strings.Index(body, "if(!managementKey&&String(url).indexOf(managementBase)===0)throw authError(t('gate.required'));")
+	sentKey := strings.Index(body, "var sentKey=Boolean(managementKey);var response=await fetch(url,opts);")
+	timer := strings.Index(body, "setTimeout(function(){controller.abort();},timeout)")
+	if guard < 0 || sentKey < 0 || timer < 0 {
+		t.Fatal("api() must contain the no-key guard, capture whether a key was sent before the fetch, and start the abort timer")
+	}
+	if guard > timer {
+		t.Fatal("api() must refuse unauthenticated management requests before starting the abort timer")
+	}
+	for _, required := range []string{
+		"if(response.status===401||response.status===403)",
+		"forgetStoredKeys();managementKey='';showAuth(sentKey?t('gate.invalid'):t('gate.required'),true);",
+		"throw authError(sentKey?t('gate.invalid'):t('gate.required'));",
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("api() must classify 401/403 as an auth failure and return to the auth page: missing %q", required)
+		}
+	}
+	if !strings.Contains(dashboardHTML, `<div id="authView" class="auth-view" hidden>`) {
+		t.Fatal("auth view must exist and start hidden")
+	}
+	for _, required := range []string{
+		"managementKey=sessionStorage.getItem('tokens-statistic-key')||readRememberedKey()||decodeCliProxyAuth()||'';if(managementKey)startDashboard();else showAuth();",
+		"function showAuth(message,isError){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}",
+		"if(!key){authMessage(t('gate.required'),true);return;}",
+		"api(managementBase+'/preferences').then(function(){hideAuth();startDashboard();})",
+		"authMessage(error&&error.isAuthError?t('gate.invalid'):t('gate.network'),true)",
+		"#appView.hidden{display:none!important}",
+	} {
+		if !strings.Contains(dashboardHTML, required) {
+			t.Fatalf("dashboard missing auth-page flow contract %q", required)
+		}
+	}
+}
+
+func TestDashboardAuthPageAssets(t *testing.T) {
+	start := strings.Index(dashboardHTML, `<div id="authView"`)
+	end := strings.Index(dashboardHTML, `<div id="appView">`)
+	if start < 0 || end < 0 || end < start {
+		t.Fatal("auth view markup not found before the app view")
+	}
+	auth := dashboardHTML[start:end]
+	for _, required := range []string{
+		`src="data:image/svg+xml;base64,`,
+		`width="72" height="72"`,
+		`data-i18n="app.tagline"`,
+		`data-i18n="gate.heading"`,
+		`data-i18n="gate.description"`,
+		`data-i18n-placeholder="gate.placeholder"`,
+		`data-i18n="gate.verify"`,
+		`data-i18n="gate.remember"`,
+		`class="eye-button"`,
+	} {
+		if !strings.Contains(auth, required) {
+			t.Fatalf("auth view missing required asset or i18n hook %q", required)
+		}
+	}
+	for _, code := range []string{"en", "zh-CN", "zh-TW", "ru"} {
+		data, err := os.ReadFile(filepath.Join("locales", code+".json"))
+		if err != nil {
+			t.Fatalf("read locale %s: %v", code, err)
+		}
+		entries := map[string]string{}
+		if err := json.Unmarshal(data, &entries); err != nil {
+			t.Fatalf("locale %s invalid JSON: %v", code, err)
+		}
+		for _, key := range []string{"app.tagline", "gate.heading", "gate.verify", "gate.remember", "gate.invalid", "gate.network", "gate.showKey", "gate.hideKey"} {
+			if entries[key] == "" {
+				t.Fatalf("locale %s missing auth-page string %q", code, key)
+			}
+		}
+	}
+}
+
+func TestDashboardSyncSettingsSaveFeedback(t *testing.T) {
+	start := strings.Index(dashboardHTML, "async function saveSyncSettings(){")
+	end := strings.Index(dashboardHTML, "function setPricingBusy(")
+	if start < 0 || end < 0 || end < start {
+		t.Fatal("saveSyncSettings() not found in dashboard script")
+	}
+	body := dashboardHTML[start:end]
+	for _, required := range []string{
+		"document.getElementById('syncSettingsToast')",
+		"t('pricing.settingsSaved'",
+		"toast.classList.add('is-visible')",
+		"syncSettingsToastTimer=setTimeout(function(){toast.classList.remove('is-visible');},2500)",
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("saveSyncSettings must surface the save result via the top-center toast: missing %q", required)
+		}
+	}
+	if strings.Contains(body, "text('status'") {
+		t.Fatal("saveSyncSettings must not report success via the page-level #status element hidden behind the modal dialog")
+	}
+	if strings.Contains(dashboardHTML, "syncSettingsStatus") {
+		t.Fatal("the superseded inline sync-settings status tag must be removed")
+	}
+	if !strings.Contains(dashboardHTML, `<div id="syncSettingsToast" class="pricing-toast" role="status" aria-live="polite"></div>`) {
+		t.Fatal("pricing dialog must contain the top-center toast element")
+	}
+	for _, css := range []string{
+		".apikey-filter-count[hidden]{display:none}",
+		".pricing-toast{position:fixed;top:64px;left:50%",
+		".pricing-toast.is-visible{opacity:1",
+		".pricing-toast{transition:none}",
+	} {
+		if !strings.Contains(dashboardHTML, css) {
+			t.Fatalf("dashboard stylesheet missing rule %q", css)
+		}
+	}
+}
+
+func TestDashboardTimePickerWrapsAtLimits(t *testing.T) {
+	for _, stale := range []string{`max="23"`, `max="59"`} {
+		if strings.Contains(dashboardHTML, stale) {
+			t.Fatalf("time picker inputs must not hard-cap the native spinner: found %s", stale)
+		}
+	}
+	if !strings.Contains(dashboardHTML, "value=((value%span)+span)%span;") {
+		t.Fatal("applyTimePickerPart must wrap overflow in both directions (up: 23->00, down: 0->23)")
+	}
+}
+
+func TestDashboardDimensionTableStaysStableDuringRefresh(t *testing.T) {
+	start := strings.Index(dashboardHTML, "async function load(resetRequestPage){")
+	end := strings.Index(dashboardHTML, "function animateText(")
+	if start < 0 || end < 0 || end < start {
+		t.Fatal("load() not found in dashboard script")
+	}
+	loadBody := dashboardHTML[start:end]
+	if strings.Contains(loadBody, "currentDimensionGroups=[]") || strings.Contains(loadBody, "dimensionTotal=0;") {
+		t.Fatal("load() must not wipe the dimension table before refetching: keep the previous rows visible until the fresh groups response replaces them")
+	}
+	rvStart := strings.Index(dashboardHTML, "function renderVisuals(){")
+	rvEnd := strings.Index(dashboardHTML, "function cell(row,value,cls){")
+	if rvStart < 0 || rvEnd < 0 || rvEnd < rvStart {
+		t.Fatal("renderVisuals() not found in dashboard script")
+	}
+	renderBody := dashboardHTML[rvStart:rvEnd]
+	guarded := "if(!currentDimensionGroups.length&&!dimensionTotal)renderGroups(currentDimensionGroups,dimensionTotal);"
+	if !strings.Contains(renderBody, guarded) {
+		t.Fatal("renderVisuals must re-render the dimension table only on first paint; loadGroups owns later updates")
+	}
+	tuStart := strings.Index(dashboardHTML, "function toggleTokenUnit(){")
+	tuEnd := strings.Index(dashboardHTML, "function duration(")
+	if tuStart < 0 || tuEnd < 0 || tuEnd < tuStart {
+		t.Fatal("toggleTokenUnit() not found in dashboard script")
+	}
+	if !strings.Contains(dashboardHTML[tuStart:tuEnd], "renderGroups(currentDimensionGroups,dimensionTotal);") {
+		t.Fatal("toggleTokenUnit must re-render the dimension table so its token columns follow the switched unit")
+	}
+}
+
+func TestDashboardDimensionSortInstantFeedback(t *testing.T) {
+	start := strings.Index(dashboardHTML, "function setDimensionSort(key){")
+	end := strings.Index(dashboardHTML, "function setDimensionColumnVisible(key,visible){")
+	if start < 0 || end < 0 || end < start {
+		t.Fatal("setDimensionSort() not found in dashboard script")
+	}
+	body := dashboardHTML[start:end]
+	header := strings.Index(body, "renderDimensionHeaders();")
+	fetch := strings.Index(body, "loadGroups(statsLoadSequence")
+	if header < 0 || fetch < 0 {
+		t.Fatal("setDimensionSort must re-render the headers and refetch groups")
+	}
+	if header > fetch {
+		t.Fatal("setDimensionSort must update the sort arrows before the server round trip so the click is acknowledged instantly")
+	}
+	lgStart := strings.Index(dashboardHTML, "function setDimensionTableLoading(loading){")
+	lgEnd := strings.Index(dashboardHTML, "function loadGroups(sequence,query){")
+	if lgStart < 0 || lgEnd < 0 || lgEnd < lgStart {
+		t.Fatal("setDimensionTableLoading() helper not found before loadGroups")
+	}
+	helper := dashboardHTML[lgStart:lgEnd]
+	for _, required := range []string{
+		"table.classList.toggle('is-loading',!!loading)",
+		"table.setAttribute('aria-busy','true')",
+		"table.removeAttribute('aria-busy')",
+	} {
+		if !strings.Contains(helper, required) {
+			t.Fatalf("setDimensionTableLoading must drive the is-loading class and aria-busy state: missing %q", required)
+		}
+	}
+	loadBody := dashboardHTML[lgEnd : lgEnd+2200]
+	for _, required := range []string{
+		"dimensionLoadPending++;setDimensionTableLoading(true);",
+		".finally(function(){dimensionLoadPending=Math.max(0,dimensionLoadPending-1);if(!dimensionLoadPending)setDimensionTableLoading(false);})",
+	} {
+		if !strings.Contains(loadBody, required) {
+			t.Fatalf("loadGroups must show the loading state while the groups request is in flight and clear it afterwards: missing %q", required)
+		}
+	}
+	if !strings.Contains(dashboardHTML, "dimensionLoadPending=0,") {
+		t.Fatal("dimensionLoadPending counter must be declared in the dashboard state variables")
+	}
+	for _, css := range []string{
+		".dimension-table tbody{transition:opacity .12s ease}",
+		".dimension-table.is-loading tbody{opacity:.55}",
+	} {
+		if !strings.Contains(dashboardHTML, css) {
+			t.Fatalf("dashboard stylesheet missing dimension-table loading rule %q", css)
+		}
+	}
+}
+
+func TestDashboardCliProxyAuthReadsStateEnvelope(t *testing.T) {
+	start := strings.Index(dashboardHTML, "function decodeCliProxyAuth(){")
+	end := strings.Index(dashboardHTML, "function decodeStorageValue(")
+	if start < 0 || end < 0 || end < start {
+		t.Fatal("decodeCliProxyAuth() not found in dashboard script")
+	}
+	body := dashboardHTML[start:end]
+	if !strings.Contains(body, "parsed.managementKey") {
+		t.Fatal("decodeCliProxyAuth must still read the management key from the flat cli-proxy-auth format")
+	}
+	if !strings.Contains(body, "parsed.state&&parsed.state.managementKey") {
+		t.Fatal("decodeCliProxyAuth must fall back to the {state:{managementKey}} envelope persisted by the management center; without it the key gate opens even inside the management center")
+	}
+}
+
+func TestDashboardApiKeyTrackingThreeState(t *testing.T) {
+	// The tracking switch starts UNKNOWN (null) so the dashboard never flashes
+	// "API Key 追踪未启用" before /api-key-info answers; the notice may only
+	// render once the backend has explicitly reported tracking as disabled.
+	if !strings.Contains(dashboardHTML, "apiKeyTrackingEnabled=null") {
+		t.Fatal("tracking switch must start in the unknown state (null), not assumed-disabled")
+	}
+	start := strings.Index(dashboardHTML, "function renderAPIKeyFilter(focusRef){")
+	end := strings.Index(dashboardHTML, "function setSelectedAPIKeyRefs(values,focusRef){")
+	if start < 0 || end < 0 || end < start {
+		t.Fatal("renderAPIKeyFilter() not found in dashboard script")
+	}
+	body := dashboardHTML[start:end]
+	for _, required := range []string{
+		"var trackingKnown=apiKeyTrackingEnabled!==null;",
+		"filter.hidden=!trackingKnown||!apiKeyTrackingEnabled;",
+		"tracking.hidden=!trackingKnown||!!apiKeyTrackingEnabled;",
+		"button.disabled=!trackingKnown||!apiKeyTrackingEnabled;",
+		"if(!trackingKnown||!apiKeyTrackingEnabled){closeAPIKeyFilterMenu(false);return;}",
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("renderAPIKeyFilter must implement the unknown/enabled/disabled three-state contract: missing %q", required)
+		}
+	}
+	// The filter caret must be the CSS-drawn chevron shared with the enhanced
+	// selects (7px box, 1.5px currentColor strokes, flip-on-open) — never a font
+	// glyph, which renders thin, misaligned, and platform-dependent.
+	for _, required := range []string{
+		".apikey-filter-button{position:relative;display:inline-flex;align-items:center;gap:6px;min-width:220px;max-width:420px;min-height:34px;padding:6px 26px 6px 9px;",
+		".apikey-filter-caret{position:absolute;right:11px;width:7px;height:7px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-2px) rotate(45deg);transition:transform 160ms cubic-bezier(.2,.8,.2,1)}",
+		".apikey-filter-button[aria-expanded='true'] .apikey-filter-caret{transform:translateY(2px) rotate(225deg)}",
+		`<span class="apikey-filter-caret" aria-hidden="true"></span>`,
+	} {
+		if !strings.Contains(dashboardHTML, required) {
+			t.Fatalf("API Key filter caret must mirror the enhanced-select chevron: missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"aria-hidden=\"true\">⌄</span>",
+		".apikey-filter-caret{margin-left:auto",
+	} {
+		if strings.Contains(dashboardHTML, forbidden) {
+			t.Fatalf("API Key filter caret must not fall back to a text glyph %q", forbidden)
+		}
+	}
+}
+
+func TestDashboardCardsWatermarkUsesPluginLogo(t *testing.T) {
+	if !strings.Contains(dashboardHTML, `.card::after{content:"";position:absolute;right:-62px;bottom:-66px;width:152px;height:152px;background-color:color-mix(in srgb,var(--primary-color) 8%,transparent)`) {
+		t.Fatal("summary cards must carry the plugin-logo corner watermark at 8% tint")
+	}
+	if !strings.Contains(dashboardHTML, `-webkit-mask:url("data:image/svg+xml;base64,`) || !strings.Contains(dashboardHTML, `mask:url("data:image/svg+xml;base64,`) {
+		t.Fatal("card watermark mask must resolve the inlined plugin logo data URI")
+	}
+	if strings.Contains(dashboardHTML, "right:-29px;bottom:-36px;width:90px;height:90px") {
+		t.Fatal("the superseded corner arc decoration must be removed")
 	}
 }
 
@@ -1203,7 +1501,7 @@ func TestDashboardSummaryCardsShareUniformVerticalRhythm(t *testing.T) {
 		`line-height:1.35`,
 		`.card-switch{position:relative;z-index:2;margin-left:auto;min-height:28px`,
 		`id="tokenUnitButton" class="card-switch"`,
-		`.card::after{content:"";position:absolute;right:-29px;bottom:-36px;width:90px;height:90px`,
+		`.card::after{content:"";position:absolute;right:-62px;bottom:-66px;width:152px;height:152px`,
 		`.cards{display:grid;grid-template-columns:repeat(6,minmax(118px,1fr))`,
 		`@media(max-width:820px){.heading{padding-right:clamp(72px,12vw,112px)}`,
 	} {
@@ -1239,10 +1537,47 @@ func TestPricingDialogSyncHelpAndScrollContract(t *testing.T) {
 		`id="syncMappings" autocomplete="off"></textarea><small data-i18n="pricing.mappingsHelp">`,
 		`.sync-field small{color:var(--text-tertiary);font-size:10px;font-weight:500;line-height:1.5}`,
 	}
-	html := fullDashboardHTML
+	html := dashboardHTML
 	for _, item := range required {
 		if !strings.Contains(html, item) {
 			t.Fatalf("pricing dialog missing sync help/scroll contract %q", item)
+		}
+	}
+}
+
+func TestDashboardPricingLastSavedContract(t *testing.T) {
+	// The save toast must sit at the top of the viewport (64px down, user
+	// preference) instead of the old bottom placement, the tags row must end
+	// with a persistent "last saved" chip fed by the server-side saved_at
+	// field, and saving must refresh the tags row immediately.
+	required := []string{
+		`<span id="lastSyncStatus" class="tag plain" data-i18n="pricing.lastSync">Not synchronized with models.dev</span><span id="lastSaveStatus" class="tag plain" data-i18n="pricing.lastSavedNone">Never saved</span></div>`,
+		"lastSync=null,lastSaved=null",
+		"lastSaved=book.saved_at?new Date(book.saved_at):null;",
+		".pricing-toast{position:fixed;top:64px;left:50%;transform:translate(-50%,-8px);",
+		"fillSyncSettings();renderPricingStatus();",
+		"text('lastSaveStatus',lastSaved?t('pricing.lastSaved',{time:localeDate(lastSaved,{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})}):t('pricing.lastSavedNone'));",
+		"t('pricing.lastSavedNone'));}",
+		// The dialog entrance animation must stay on .dialog-body: a transform
+		// (or will-change) on the dialog itself would turn it into the fixed
+		// toast's containing block and silently re-anchor top:64px to the dialog.
+		"#pricingDialog{width:min(1120px,calc(100vw - 28px));opacity:0;pointer-events:none;transition:opacity 160ms cubic-bezier(.2,.8,.2,1)}",
+		"#pricingDialog .dialog-body{transform:translateY(8px) scale(.98);transition:transform 160ms cubic-bezier(.2,.8,.2,1);will-change:transform}",
+		"#pricingDialog.is-open .dialog-body{transform:translateY(0) scale(1)}",
+	}
+	for _, item := range required {
+		if !strings.Contains(dashboardHTML, item) {
+			t.Fatalf("dashboard missing last-saved contract %q", item)
+		}
+	}
+	for _, forbidden := range []string{
+		".pricing-toast{position:fixed;bottom:18px",
+		"saved_at?new Date(book.saved_at):'',",
+		"pointer-events:none;transform:translateY(8px)",
+		"dialog#pricingDialog.is-open{opacity:1;pointer-events:auto;transform:",
+	} {
+		if strings.Contains(dashboardHTML, forbidden) {
+			t.Fatalf("dashboard contains outdated last-saved pattern %q", forbidden)
 		}
 	}
 }
@@ -1360,6 +1695,8 @@ func TestDashboardLocalesCatalog(t *testing.T) {
 		"pricing.restore",
 		"pricing.restoredEntry",
 		"pricing.restoreConfirm",
+		"pricing.lastSaved",
+		"pricing.lastSavedNone",
 		"pricing.restoreReferenceHint",
 		"pricing.addTier",
 		"error.missingModelId",
@@ -1404,7 +1741,7 @@ func TestDashboardLocalesCatalog(t *testing.T) {
 			t.Fatalf("dashboardHTML missing translateRawResult coverage %q", required)
 		}
 	}
-	if !strings.Contains(fullDashboardHTML, "translateRawResult(record.result,record.failed)") {
+	if !strings.Contains(dashboardHTML, "translateRawResult(record.result,record.failed)") {
 		t.Fatal("full dashboardHTML missing export translateRawResult coverage")
 	}
 
@@ -1435,7 +1772,6 @@ func TestDashboardLocalizesUntitledModelInAllLocales(t *testing.T) {
 func TestDashboardTemplateMarkersAreUniqueAndReplaced(t *testing.T) {
 	markers := []string{
 		"/*LOCALE_PLACEHOLDER*/",
-		"/*FULL_MODE_PAGE*/",
 		"/*FULL_MODE_APIKEY_STYLES*/",
 		"/*FULL_MODE_APIKEY_FILTER*/",
 		"/*FULL_MODE_APIKEY_MARKUP*/",
@@ -1456,7 +1792,7 @@ func TestDashboardTemplateMarkersAreUniqueAndReplaced(t *testing.T) {
 		if count := strings.Count(dashboardHTMLTemplate, marker); count != 1 {
 			t.Fatalf("template marker %s appears %d times, want 1", marker, count)
 		}
-		if strings.Contains(dashboardHTML, marker) || strings.Contains(fullDashboardHTML, marker) {
+		if strings.Contains(dashboardHTML, marker) || strings.Contains(dashboardHTML, marker) {
 			t.Fatalf("generated dashboard retains marker %s", marker)
 		}
 	}
@@ -1466,7 +1802,7 @@ func TestDashboardScriptParsesWithNode(t *testing.T) {
 	if err != nil {
 		t.Skip("node is not available")
 	}
-	variants := map[string]string{"dashboard": dashboardHTML, "full": fullDashboardHTML}
+	variants := map[string]string{"dashboard": dashboardHTML}
 	for name, html := range variants {
 		start := strings.Index(html, "<script>")
 		scriptIndex := 0
@@ -1477,7 +1813,6 @@ func TestDashboardScriptParsesWithNode(t *testing.T) {
 			}
 			script := html[start+len("<script>") : start+end]
 			resolved := strings.ReplaceAll(script, "/*LOCALE_PLACEHOLDER*/", "{}")
-			resolved = strings.ReplaceAll(resolved, "/*FULL_MODE_PAGE*/", "false")
 			for _, marker := range []string{"STYLES", "FILTER", "MARKUP", "DIALOG", "QUERY", "LOAD", "RENDER", "DIMENSION_COLUMN", "DIMENSION_SORT", "DIMENSION_CELL", "REQUEST_COLUMN", "REQUEST_SORT", "REQUEST_CELL", "LANGUAGE", "SCRIPT"} {
 				resolved = strings.ReplaceAll(resolved, "/*FULL_MODE_APIKEY_"+marker+"*/", "")
 			}

@@ -104,6 +104,22 @@ func TestDashboardDateRangeCalendarSingleDaySelectionInBrowser(t *testing.T) {
 	runDashboardDateRangeBrowserTest(t, "single-day", "dashboard single-day selection browser regression failed")
 }
 
+func TestDashboardTimePickerWrapsAndMidnightEndDisplaysInBrowser(t *testing.T) {
+	runDashboardDateRangeBrowserTest(t, "time-wrap", "dashboard time-wrap browser regression failed")
+}
+
 func TestDashboardTokenUnitCyclesThroughBillionsInBrowser(t *testing.T) {
 	runDashboardDateRangeBrowserTest(t, "token-unit", "dashboard token-unit browser regression failed")
+}
+
+func TestDashboardDimensionSortInstantFeedbackInBrowser(t *testing.T) {
+	runDashboardDateRangeBrowserTest(t, "sort-feedback", "dashboard dimension sort instant-feedback browser regression failed")
+}
+
+func TestDashboardCpaAuthReuseInBrowser(t *testing.T) {
+	runDashboardDateRangeBrowserTest(t, "cpa-auth-reuse", "dashboard management-center auth reuse browser regression failed")
+}
+
+func TestDashboardPricingLastSavedStampInBrowser(t *testing.T) {
+	runDashboardDateRangeBrowserTest(t, "pricing-save-stamp", "dashboard pricing last-saved stamp browser regression failed")
 }

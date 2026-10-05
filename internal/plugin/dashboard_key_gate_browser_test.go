@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestDashboardControlLayoutInBrowser(t *testing.T) {
+func TestDashboardKeyGateInBrowser(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
 		browserTestUnavailable(t, "Node.js", err)
@@ -22,12 +22,12 @@ func TestDashboardControlLayoutInBrowser(t *testing.T) {
 
 	htmlPath := filepath.Join(t.TempDir(), "dashboard.html")
 	if err := os.WriteFile(htmlPath, []byte(dashboardHTML), 0o600); err != nil {
-		t.Fatalf("write full dashboard response body: %v", err)
+		t.Fatalf("write dashboard response body: %v", err)
 	}
 
-	command := exec.Command(node, filepath.Join("..", "..", "test", "dashboard_api_key_layout.mjs"), htmlPath, chrome)
+	command := exec.Command(node, filepath.Join("..", "..", "test", "dashboard_key_gate.mjs"), htmlPath, chrome)
 	command.Env = append(os.Environ(), "TZ=UTC")
 	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("dashboard API Key layout browser regression failed: %v\n%s\nInstall the pinned browser-test dependency with `npm ci`; this test uses the installed Google Chrome and does not download a browser.", err, output)
+		t.Fatalf("dashboard key-gate browser regression failed: %v\n%s\nInstall the pinned browser-test dependency with `npm ci`; this test uses the installed Google Chrome and does not download a browser.", err, output)
 	}
 }
