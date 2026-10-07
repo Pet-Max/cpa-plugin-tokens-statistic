@@ -26,7 +26,7 @@ Tokens Statistic is a usage-statistics plugin for [CLIProxyAPI](https://github.c
 
 ## Features
 
-- Per-call records: model, input / output / reasoning / cache tokens, latency, TTFT, TPS, success rate and cache hits
+- Per-call records: model, input / output / reasoning / cache tokens, latency, TTFT, average TPS, success rate and cache hits
 - Multi-dimensional grouping: model, provider, executor, source, auth type, service tier, reasoning effort, failure status
 - Summary cards, trend charts, dimension tables and per-request detail
 - Time ranges: today, last 5 hours / 7 days / 30 days, current month, custom
@@ -37,6 +37,14 @@ Tokens Statistic is a usage-statistics plugin for [CLIProxyAPI](https://github.c
 - Estimated-cost ￥/$ toggle, persisted
 - Follows the Management Center theme and browser language; Simplified Chinese, Traditional Chinese, English and Russian built in
 - Single-file plugin for Linux, Mac and Windows
+
+### Average TPS definition
+
+Average TPS = all generated tokens / the total request latency reported by the host in seconds, including the wait and reasoning before the first token. OpenAI / Codex output tokens already include reasoning tokens, so they are not added again; protocols such as Gemini that report reasoning separately use output plus reasoning. TTFT is displayed separately and is not subtracted from the average TPS denominator.
+
+For example, 539 output tokens (including 516 reasoning tokens) over 22.57 seconds gives about 23.88 average TPS. This measures overall request throughput, not the model's pure decoding speed. Accurate hidden-reasoning or text decoding rates require matching generation-stage timing from upstream. TPS is displayed as 0 when total latency is missing or zero.
+
+Historical requests are recalculated with the same definition when queried, without a database migration. Request details and CSV exports use the same average TPS.
 
 ## Deployment
 

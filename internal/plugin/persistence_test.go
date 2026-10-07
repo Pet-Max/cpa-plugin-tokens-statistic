@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -719,7 +720,7 @@ func TestStorePersistsAndQueriesPerRequestDetails(t *testing.T) {
 	if page.Items[0].Sequence <= page.Items[1].Sequence || page.Items[0].Model != "beta" {
 		t.Fatalf("requests are not newest-first: %+v", page.Items)
 	}
-	if page.Items[1].Result != "失败 (HTTP 500)" || page.Items[1].GenerationNS != uint64(1500*time.Millisecond) || page.Items[1].TPS != 2 {
+	if page.Items[1].Result != "失败 (HTTP 500)" || page.Items[1].GenerationNS != uint64(1500*time.Millisecond) || page.Items[1].TPS != 1.5 {
 		t.Fatalf("unexpected failed request detail: %+v", page.Items[1])
 	}
 	filtered, err := store.QueryRequests("24h", 0, 100, "alpha")
@@ -733,7 +734,7 @@ func TestStorePersistsAndQueriesPerRequestDetails(t *testing.T) {
 	if item.Result != "成功" || item.GenerationNS != uint64(2*time.Second) || item.TTFTNS != uint64(time.Second) || !item.CacheHit {
 		t.Fatalf("unexpected request timings/status: %+v", item)
 	}
-	if item.TPS != 20 || item.InputTokens != 100 || item.OutputTokens != 40 || item.ReasoningTokens != 8 || item.CacheCreationTokens != 3 {
+	if math.Abs(item.TPS-40.0/3.0) > 1e-9 || item.InputTokens != 100 || item.OutputTokens != 40 || item.ReasoningTokens != 8 || item.CacheCreationTokens != 3 {
 		t.Fatalf("unexpected request counters: %+v", item)
 	}
 	queryRange, err := presetUsageRange("24h", time.Now().UTC())
@@ -1532,7 +1533,7 @@ func TestQueryRequestsRecalculatesStoredSeparateReasoningTPS(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Simulate a record persisted by the pre-fix implementation.
+	// 模拟旧版本按首字后耗时计算并持久化的请求，查询时应使用完整耗时重新计算。
 	db, err := bolt.Open(config.DataPath, 0o600, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -1555,7 +1556,7 @@ func TestQueryRequestsRecalculatesStoredSeparateReasoningTPS(t *testing.T) {
 			if item.Model != usage.Dimensions.Model {
 				return nil
 			}
-			item.TPS = 25
+			item.TPS = 325
 			encoded, err := json.Marshal(item)
 			if err != nil {
 				return err
@@ -1598,7 +1599,7 @@ func TestQueryRequestsRecalculatesStoredSeparateReasoningTPS(t *testing.T) {
 		t.Fatalf("unexpected request page: %+v", page)
 	}
 	item := page.Items[0]
-	if item.GenerationNS != uint64(2*time.Second) || item.TPS != 325 {
+	if item.GenerationNS != uint64(2*time.Second) || math.Abs(item.TPS-650.0/2.25) > 1e-9 {
 		t.Fatalf("stored request TPS was not recalculated: %+v", item)
 	}
 }
