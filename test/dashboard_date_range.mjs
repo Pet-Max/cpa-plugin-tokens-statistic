@@ -206,7 +206,7 @@ try {
     const totalTokens = page.locator('#totalTokens');
     const expected = [
       ['B', '1.23B', 'full'],
-      ['完整', '1,230,000,000', 'k'],
+      ['#', '1,230,000,000', 'k'],
       ['K', '1,230,000K', 'm'],
       ['M', '1,230M', 'B'],
     ];

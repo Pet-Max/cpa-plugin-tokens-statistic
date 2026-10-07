@@ -37,6 +37,7 @@ Tokens Statistic 是一个 [CLIProxyAPI](https://github.com/router-for-me/CLIPro
 - 表格分页、排序、列显示偏好持久化
 - 支持按 API Key 多选筛选（并集）与标签管理
 - Token 单位完整值 / K / M / B 切换并持久化
+- 预估花费￥与$切换并持久化
 - 跟随管理中心主题与浏览器语言，内置简体中文、繁体中文、英文、俄文
 - 单文件插件，支持Linux、Mac与Windows
 
@@ -100,7 +101,7 @@ plugins:
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
   CC="zig cc -target x86_64-linux-gnu" \
   go build -buildmode=c-shared -trimpath -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.1.1" \
+  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.1.2" \
   -o tokens-statistic.so .
 ```
 

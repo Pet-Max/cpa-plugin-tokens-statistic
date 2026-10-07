@@ -261,7 +261,7 @@ func TestDashboardPreferencesPersistAcrossRestartAndStatsReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if defaults.RequestPageSize != 100 || defaults.DimensionPageSize != 100 || len(defaults.HiddenRequestColumns) != 0 || len(defaults.HiddenDimensionColumns) != 0 || defaults.TimeRangeMode != "custom" || defaults.TokenDisplayMode != "full" {
+	if defaults.RequestPageSize != 100 || defaults.DimensionPageSize != 100 || len(defaults.HiddenRequestColumns) != 0 || len(defaults.HiddenDimensionColumns) != 0 || defaults.TimeRangeMode != "custom" || defaults.TokenDisplayMode != "m" {
 		t.Fatalf("default preferences = %+v", defaults)
 	}
 	want := DashboardPreferences{

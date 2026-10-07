@@ -5,7 +5,7 @@ set -euo pipefail
 # Uses zig cc for cross-compiling when available, otherwise aarch64-linux-gnu-gcc.
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DIST_DIR="$ROOT_DIR/dist"
-VERSION=${VERSION:-v0.1.1}
+VERSION=${VERSION:-v0.1.2}
 PLUGIN_ID=${PLUGIN_ID:-tokens-statistic}
 RELEASE_ARTIFACT="$DIST_DIR/${PLUGIN_ID}-${VERSION}-linux-arm64.so"
 

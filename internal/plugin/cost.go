@@ -180,10 +180,6 @@ func (s *Store) queryCosts(queryRange usageRange) (CostResponse, error) {
 	return s.queryCostsByFilter(queryRange, usageFilter{})
 }
 
-func (s *Store) queryCostsBySource(queryRange usageRange, source string) (CostResponse, error) {
-	return s.queryCostsByFilter(queryRange, newUsageFilter(source, ""))
-}
-
 func (s *Store) queryCostsByFilter(queryRange usageRange, filter usageFilter) (CostResponse, error) {
 	s.stateMu.RLock()
 	defer s.stateMu.RUnlock()

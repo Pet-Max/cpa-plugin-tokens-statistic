@@ -601,11 +601,11 @@ func TestDashboardSecurityContract(t *testing.T) {
 			t.Fatalf("dashboard missing %q", required)
 		}
 	}
-	// Storage policy: the remembered-credentials feature is the only sanctioned
-	// browser storage write — one namespaced entry, always stored obfuscated,
+	// Storage policy: browser storage writes are limited to the obfuscated
+	// remembered-key entry and the remember-preference flag, both namespaced,
 	// always removed by name. No wholesale wipes, nothing else is ever written.
-	if strings.Count(html, "localStorage.setItem") != 1 || !strings.Contains(html, "localStorage.setItem('tokens-statistic-remembered-key',encodeStorageValue(JSON.stringify({key:key})))") {
-		t.Fatal("dashboard must limit localStorage writes to the single obfuscated remembered-key entry")
+	if strings.Count(html, "localStorage.setItem") != 2 || !strings.Contains(html, "localStorage.setItem('tokens-statistic-remembered-key',encodeStorageValue(JSON.stringify({key:key})))") || !strings.Contains(html, "localStorage.setItem('tokens-statistic-remember-pref',remember?'1':'0')") {
+		t.Fatal("dashboard must limit localStorage writes to the obfuscated remembered-key entry and the remember-preference flag")
 	}
 	if !strings.Contains(html, "localStorage.removeItem('tokens-statistic-remembered-key')") {
 		t.Fatal("dashboard must remove the remembered-key localStorage entry by name")

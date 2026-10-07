@@ -14,7 +14,7 @@ import (
 
 // version is set at build time with:
 // -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=<version>
-var version = "0.1.0"
+var version = "0.1.2"
 
 // maxSupportedRPCSchema is intentionally independent from the SDK's latest
 // schema. Future hosts may negotiate down to this verified contract without
@@ -263,7 +263,6 @@ func pluginRegistration(schemaVersion uint32) registration {
 				{Name: "retention", Type: pluginapi.ConfigFieldTypeInteger, Description: "分钟级统计与请求明细在数据库中的保留天数，超过保留期的数据会被自动清理；可选 1-3650 天，默认 365。"},
 				{Name: "flush", Type: pluginapi.ConfigFieldTypeString, Description: "用量数据批量写入数据库的间隔，例如 5s，允许 1s-1h；等待期间攒满 100 条记录也会立即写入一批。留空表示每条用量记录到达后立即提交。"},
 				{Name: "secret", Type: pluginapi.ConfigFieldTypeString, Description: "用于加密 API Key 并计算其指纹的密钥。默认值 123456 仅建议在本地测试时使用；公开部署请设置至少 32 字节的自定义随机值，防止数据库文件泄露后 API Key 被还原。留空将完全禁用 API Key 追踪。修改此值会开启新的加密代数，历史记录仍会保留。"},
-				{Name: "session_ttl", Type: pluginapi.ConfigFieldTypeInteger, Description: "解锁完整功能面板后的会话有效时长，单位为分钟，范围 1-1440，默认 15。会话令牌仅保存在页面内存中，不会持久化到磁盘。"},
 			},
 		},
 		Capabilities: registrationCapabilities{UsagePlugin: true, ManagementAPI: true},

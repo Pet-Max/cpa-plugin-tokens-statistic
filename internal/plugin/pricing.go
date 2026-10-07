@@ -320,10 +320,6 @@ func validOptionalDimension(value string) bool {
 	return value == "" || utf8.ValidString(value) && utf8.RuneCountInString(value) <= maxDimensionRunes
 }
 
-func tokenRatesZero(rates TokenRates) bool {
-	return rates.Input == 0 && rates.Output == 0 && rates.CacheRead == 0 && rates.CacheCreation == 0
-}
-
 func sameEditableModelPrice(left, right ModelPrice) bool {
 	if left.Input != right.Input || left.Output != right.Output || left.CacheRead != right.CacheRead || left.CacheCreation != right.CacheCreation || left.AccountingMode != right.AccountingMode || len(left.ContextTiers) != len(right.ContextTiers) || len(left.ServiceTiers) != len(right.ServiceTiers) {
 		return false

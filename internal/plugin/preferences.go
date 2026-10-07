@@ -9,7 +9,7 @@ const (
 	defaultDashboardPageSize = 100
 	maxDashboardPageSize     = 500
 	defaultTimeRangeMode     = "custom"
-	defaultTokenDisplayMode  = "full"
+	defaultTokenDisplayMode  = "m"
 )
 
 var dashboardTimeRangeModes = map[string]struct{}{

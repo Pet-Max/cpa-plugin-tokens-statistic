@@ -14,7 +14,8 @@ const GOOD_KEY = 'gate-browser-key';
 // Keys the mock rejects, mirroring a host whose management key does not match.
 const DENY_KEYS = new Set(['wrong-key', 'bad-stored-key']);
 const EMPTY_MESSAGE = '请输入管理密钥。';
-const INVALID_MESSAGE = '管理密钥无效或已过期，请重新输入。';
+const INVALID_MESSAGE = '管理密钥无效或与当前配置不一致，请重新输入。';
+const CENTER_INVALID_MESSAGE = '管理中心记住的密钥已失效。请到管理中心重新登录，或在本页输入当前密钥。';
 
 const requestRow = {
   sequence: 1,
@@ -292,6 +293,27 @@ try {
   const leftover = await page.evaluate(() => localStorage.getItem('tokens-statistic-remembered-key'));
   if (leftover) {
     throw new Error('a rejected remembered key must be wiped from storage');
+  }
+
+  // Phase D: a stale key remembered by the CPA management center is rejected
+  // with the dedicated center-credentials guidance; the rejection is also
+  // recorded so later boots in this tab skip the center fallback.
+  await page.evaluate(() => {
+    localStorage.setItem('cli-proxy-auth', window.__obf(JSON.stringify({ managementKey: 'wrong-key' })));
+    sessionStorage.clear();
+  });
+  lastAuthHeader = '';
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => {
+    const view = document.getElementById('authView');
+    return view && !view.hidden && document.getElementById('authMessage').classList.contains('error');
+  });
+  if (lastAuthHeader !== 'Bearer wrong-key') {
+    throw new Error(`the center-remembered key must be tried against the host, got authorization header "${lastAuthHeader}"`);
+  }
+  const centerInvalidText = await page.evaluate(() => document.getElementById('authMessage').textContent);
+  if (centerInvalidText !== CENTER_INVALID_MESSAGE) {
+    throw new Error(`rejected center-remembered key must show the center-credentials guidance, got ${centerInvalidText}`);
   }
 
   if (pageErrors.length > 0) {

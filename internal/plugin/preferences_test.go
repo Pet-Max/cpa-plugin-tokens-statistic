@@ -32,7 +32,7 @@ func TestDashboardPreferencesNormalizeTokenDisplayMode(t *testing.T) {
 	}
 
 	empty := defaultDashboardPreferences()
-	if _, err := normalizeDashboardPreferences(empty); err != nil || empty.TokenDisplayMode != "full" {
+	if _, err := normalizeDashboardPreferences(empty); err != nil || empty.TokenDisplayMode != "m" {
 		t.Fatalf("empty token display mode: preferences=%+v err=%v", empty, err)
 	}
 

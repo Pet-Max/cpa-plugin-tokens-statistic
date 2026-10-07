@@ -16,9 +16,9 @@ Tokens Statistic is a usage-statistics plugin for [CLIProxyAPI](https://github.c
 
 ![Dashboard overview: summary cards and the trend chart](images/dashboard-overview.png)
 
-| Model details | Requests |
+| Model details | Request details |
 |:-:|:-:|
-| ![Model details](images/dashboard-dimensions.png) | ![Requests](images/dashboard-requests.png) |
+| ![Model details](images/dashboard-dimensions.png) | ![Request details](images/dashboard-requests.png) |
 
 **Model pricing & sync**
 
@@ -34,6 +34,7 @@ Tokens Statistic is a usage-statistics plugin for [CLIProxyAPI](https://github.c
 - Table pagination, sorting and persisted column preferences
 - Filter by multiple API keys (union), key labels
 - Token unit toggle (full / K / M / B), persisted
+- Estimated-cost ￥/$ toggle, persisted
 - Follows the Management Center theme and browser language; Simplified Chinese, Traditional Chinese, English and Russian built in
 - Single-file plugin for Linux, Mac and Windows
 
@@ -97,7 +98,7 @@ Or call go build directly (Linux amd64 shown):
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
   CC="zig cc -target x86_64-linux-gnu" \
   go build -buildmode=c-shared -trimpath -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.1.1" \
+  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.1.2" \
   -o tokens-statistic.so .
 ```
 
