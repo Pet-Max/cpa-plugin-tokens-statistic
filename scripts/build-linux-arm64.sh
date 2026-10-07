@@ -39,7 +39,7 @@ go build \
   -buildmode=c-shared \
   -trimpath \
   -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=${VERSION}" \
+  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=${VERSION#v}" \
   -o "$RELEASE_ARTIFACT" \
   .
 printf 'Built release artifact: %s\n' "$RELEASE_ARTIFACT"

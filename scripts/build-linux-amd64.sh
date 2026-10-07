@@ -32,7 +32,7 @@ mkdir -p "$GOPATH"
 mkdir -p "$DIST_DIR"
 cd "$ROOT_DIR"
 go build -buildmode=c-shared -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=${VERSION}" \
+  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=${VERSION#v}" \
   -o "$DIST_DIR/${PLUGIN_ID}-${VERSION}.so" .
 echo "built $DIST_DIR/${PLUGIN_ID}-${VERSION}.so"
 

@@ -29,7 +29,7 @@ function Build-WindowsDll {
     else {
         $env:CC = "gcc"
     }
-    go build -buildmode=c-shared -buildvcs=false -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=$version" -o $OutputPath .
+    go build -buildmode=c-shared -buildvcs=false -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=$releaseVersion" -o $OutputPath .
     if ($LASTEXITCODE -ne 0) {
         throw "go build failed for windows/$Arch (exit $LASTEXITCODE)"
     }
