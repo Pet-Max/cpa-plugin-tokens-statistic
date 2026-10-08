@@ -117,12 +117,13 @@ func effectiveOutputTokensForTPS(dimensions Dimensions, counters Counters, expli
 	return counters.OutputTokens
 }
 
+// requestTPS 按完整请求耗时计算平均吞吐率，避免把首字前的思考 Token 算入首字后的时间窗口。
 func requestTPS(item RequestDetail, explicitTotal bool) float64 {
-	if item.GenerationNS == 0 {
+	if item.LatencyNS == 0 {
 		return 0
 	}
 	outputTokens := effectiveOutputTokensForTPS(item.Dimensions, item.Counters, explicitTotal)
-	return float64(outputTokens) / (float64(item.GenerationNS) / float64(time.Second))
+	return float64(outputTokens) / (float64(item.LatencyNS) / float64(time.Second))
 }
 
 func requestDetailForUsage(usage normalizedUsage, sequence uint64) RequestDetail {

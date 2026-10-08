@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -25,8 +26,30 @@ func TestRequestDetailForUsageSeparateReasoningTPS(t *testing.T) {
 	if item.GenerationNS != uint64(2*time.Second) {
 		t.Fatalf("generation time = %d", item.GenerationNS)
 	}
-	if item.TPS != 325 {
-		t.Fatalf("TPS = %v, want 325", item.TPS)
+	wantTPS := 650.0 / 2.25
+	if math.Abs(item.TPS-wantTPS) > 1e-9 {
+		t.Fatalf("TPS = %v, want %v", item.TPS, wantTPS)
+	}
+}
+
+func TestRequestDetailAverageTPSIsIndependentOfTTFT(t *testing.T) {
+	latency := uint64(22570 * time.Millisecond)
+	for _, ttft := range []uint64{0, uint64(time.Second), uint64(21920 * time.Millisecond), latency, latency + 1} {
+		t.Run(fmt.Sprintf("ttft_%d", ttft), func(t *testing.T) {
+			item := requestDetailForUsage(normalizedUsage{
+				Dimensions: Dimensions{Provider: "codex"},
+				LatencyNS:  latency,
+				TTFTNS:     ttft,
+				Counters:   Counters{OutputTokens: 539, ReasoningTokens: 516},
+			}, 1)
+			wantTPS := 539.0 / 22.57
+			if math.Abs(item.TPS-wantTPS) > 1e-9 {
+				t.Fatalf("TPS = %v, want %v", item.TPS, wantTPS)
+			}
+			if item.LatencyNS != latency || item.TTFTNS != ttft {
+				t.Fatalf("request timings changed: %+v", item)
+			}
+		})
 	}
 }
 
@@ -116,10 +139,11 @@ func TestEffectiveOutputTokensForTPS(t *testing.T) {
 	}
 }
 
-func TestRequestTPSWithoutGenerationTime(t *testing.T) {
+func TestRequestTPSWithoutLatency(t *testing.T) {
 	item := RequestDetail{
-		Dimensions: Dimensions{Provider: "gemini"},
-		Counters:   Counters{OutputTokens: 100, ReasoningTokens: 100},
+		Dimensions:   Dimensions{Provider: "gemini"},
+		Counters:     Counters{OutputTokens: 100, ReasoningTokens: 100},
+		GenerationNS: uint64(time.Second),
 	}
 	if got := requestTPS(item, false); got != 0 {
 		t.Fatalf("TPS = %v, want 0", got)
