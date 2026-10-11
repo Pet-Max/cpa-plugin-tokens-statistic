@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"crypto/sha256"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/store"
 	"strings"
 	"sync"
 	"time"
@@ -61,7 +62,7 @@ func newAuthIdentityResolver(lookup authRuntimeLookup) *authIdentityResolver {
 	}
 }
 
-func (r *authIdentityResolver) resolve(authIndex string, usage Dimensions) (usageIdentity, error) {
+func (r *authIdentityResolver) resolve(authIndex string, usage store.Dimensions) (usageIdentity, error) {
 	if r == nil || r.lookup == nil || strings.TrimSpace(authIndex) == "" {
 		return usageIdentity{}, nil
 	}
@@ -107,63 +108,40 @@ func (r *authIdentityResolver) resolve(authIndex string, usage Dimensions) (usag
 }
 
 func sanitizeAuthRuntimeMetadata(metadata authRuntimeMetadata) authRuntimeMetadata {
-	metadata.Provider = normalizeDimension(metadata.Provider)
-	metadata.Type = normalizeDimension(metadata.Type)
-	metadata.Email = safeAuthAccount(metadata.Email)
-	metadata.AccountType = normalizeDimension(metadata.AccountType)
+	metadata.Provider = store.NormalizeDimension(metadata.Provider)
+	metadata.Type = store.NormalizeDimension(metadata.Type)
+	metadata.Email = store.SafeAuthAccount(metadata.Email)
+	metadata.AccountType = store.NormalizeDimension(metadata.AccountType)
 	if strings.EqualFold(metadata.AccountType, "oauth") {
-		metadata.Account = safeAuthAccount(metadata.Account)
+		metadata.Account = store.SafeAuthAccount(metadata.Account)
 	} else {
 		metadata.Account = ""
 	}
 	metadata.Label = safeAuthLabel(metadata.Label)
-	metadata.BaseURL = sanitizeServiceURL(metadata.BaseURL)
+	metadata.BaseURL = store.SanitizeServiceURL(metadata.BaseURL)
 	return metadata
 }
 
-func identityFromRuntimeMetadata(metadata authRuntimeMetadata, usage Dimensions) usageIdentity {
-	provider := displayAuthProvider(firstNonEmptyIdentity(metadata.Provider, metadata.Type, usage.Provider, usage.ExecutorType))
-	account := safeAuthAccount(metadata.Email)
+func identityFromRuntimeMetadata(metadata authRuntimeMetadata, usage store.Dimensions) usageIdentity {
+	provider := store.DisplayAuthProvider(firstNonEmptyIdentity(metadata.Provider, metadata.Type, usage.Provider, usage.ExecutorType))
+	account := store.SafeAuthAccount(metadata.Email)
 	if account == "" && strings.EqualFold(strings.TrimSpace(metadata.AccountType), "oauth") {
-		account = safeAuthAccount(metadata.Account)
+		account = store.SafeAuthAccount(metadata.Account)
 	}
 	if account == "" {
 		account = safeAuthLabel(metadata.Label)
 	}
 	if account == "" {
-		account = safeAuthAccount(sanitizeDimensionsSource(usage).Source)
+		account = store.SafeAuthAccount(store.SanitizeDimensionsSource(usage).Source)
 	}
 	return usageIdentity{Provider: provider, Account: account, BaseURL: metadata.BaseURL}
 }
-
-func displayAuthProvider(value string) string {
-	value = normalizeDimension(value)
-	switch strings.ToLower(value) {
-	case "codex":
-		return "Codex"
-	case "antigravity":
-		return "Antigravity"
-	case "xai", "x-ai", "grok":
-		return "Grok"
-	default:
-		return value
-	}
-}
-
-func safeAuthAccount(value string) string {
-	value = normalizeDimension(value)
-	if looksLikeCredential(value) {
-		return ""
-	}
-	return value
-}
-
 func safeAuthLabel(value string) string {
 	value = strings.TrimSpace(value)
-	if value == "" || looksLikeCredential(value) {
+	if value == "" || store.LooksLikeCredential(value) {
 		return ""
 	}
-	return normalizeDimension(value)
+	return store.NormalizeDimension(value)
 }
 
 func firstNonEmptyIdentity(values ...string) string {
@@ -185,15 +163,15 @@ func (r *pluginRuntime) setAuthRuntimeLookup(lookup authRuntimeLookup) {
 	r.authResolver = newAuthIdentityResolver(lookup)
 }
 
-func (r *pluginRuntime) resolveUsageIdentity(usage *normalizedUsage) {
-	if usage == nil || usage.authIndex == "" {
+func (r *pluginRuntime) resolveUsageIdentity(usage *store.Usage) {
+	if usage == nil || usage.AuthIndex == "" {
 		return
 	}
-	defer func() { usage.authIndex = "" }()
+	defer func() { usage.AuthIndex = "" }()
 	r.mu.RLock()
 	resolver := r.authResolver
 	r.mu.RUnlock()
-	identity, err := resolver.resolve(usage.authIndex, usage.Dimensions)
+	identity, err := resolver.resolve(usage.AuthIndex, usage.Dimensions)
 	if err != nil {
 		return
 	}
@@ -201,11 +179,11 @@ func (r *pluginRuntime) resolveUsageIdentity(usage *normalizedUsage) {
 	// Provider-Account labels would be stripped again on every read because
 	// safeUsageSource re-runs on persisted dimensions and rewrites non-URL
 	// API-key sources to the hardcoded provider service address.
-	if isAPIKeyAuth(usage.Dimensions.AuthType) {
-		if baseURL := firstNonEmptyIdentity(usage.baseURL, identity.BaseURL); baseURL != "" {
-			usage.Dimensions.Source = normalizeDimension(baseURL)
+	if store.IsAPIKeyAuth(usage.Dimensions.AuthType) {
+		if baseURL := firstNonEmptyIdentity(usage.BaseURL, identity.BaseURL); baseURL != "" {
+			usage.Dimensions.Source = store.NormalizeDimension(baseURL)
 			return
 		}
 	}
-	usage.Dimensions.Source = canonicalUsageSourceWithIdentity(usage.Dimensions, identity.Provider, identity.Account)
+	usage.Dimensions.Source = store.CanonicalUsageSourceWithIdentity(usage.Dimensions, identity.Provider, identity.Account)
 }

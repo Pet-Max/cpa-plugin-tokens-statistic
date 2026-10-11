@@ -5,6 +5,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/store"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
@@ -19,12 +21,12 @@ func (r *pluginRuntime) apiKeyInfoResponse() (pluginapi.ManagementResponse, erro
 	}
 	labels, err := r.store.APIKeyLabels()
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]string{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]string{"error": err.Error()}), nil
 	}
 	crypto := r.crypto
 	return jsonResponse(http.StatusOK, map[string]any{
-		"api_key_tracking_enabled":    crypto.enabled,
-		"api_key_uses_default_secret": crypto.enabled && crypto.usesDefaultSecret,
+		"api_key_tracking_enabled":    crypto.Enabled,
+		"api_key_uses_default_secret": crypto.Enabled && crypto.UsesDefaultSecret,
 		"api_key_labels":              labels,
 	}), nil
 }
@@ -58,7 +60,7 @@ func (r *pluginRuntime) setAPIKeyLabelResponse(request pluginapi.ManagementReque
 			return jsonResponse(http.StatusBadRequest, map[string]string{"error": "invalid API key label JSON"}), nil
 		}
 	}
-	if err := validateAPIKeyLabel(input.Ref, input.Label); err != nil {
+	if err := store.ValidateAPIKeyLabel(input.Ref, input.Label); err != nil {
 		return jsonResponse(http.StatusBadRequest, map[string]string{"error": err.Error()}), nil
 	}
 	r.mu.RLock()
@@ -67,7 +69,7 @@ func (r *pluginRuntime) setAPIKeyLabelResponse(request pluginapi.ManagementReque
 		return jsonResponse(http.StatusServiceUnavailable, map[string]string{"error": "storage is not initialized"}), nil
 	}
 	if err := r.store.SetAPIKeyLabel(input.Ref, input.Label); err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]string{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]string{"error": err.Error()}), nil
 	}
 	return jsonResponse(http.StatusOK, map[string]any{"saved": true, "ref": input.Ref, "label": input.Label}), nil
 }

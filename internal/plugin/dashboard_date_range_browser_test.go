@@ -38,6 +38,26 @@ func resolveBrowserTestChrome() (string, error) {
 			}
 		}
 	}
+	if runtime.GOOS == "windows" {
+		programFiles := os.Getenv("ProgramFiles")
+		programFilesX86 := os.Getenv("ProgramFiles(x86)")
+		localAppData := os.Getenv("LocalAppData")
+		var candidates []string
+		for _, root := range []string{programFiles, programFilesX86, localAppData} {
+			if root == "" {
+				continue
+			}
+			candidates = append(candidates,
+				filepath.Join(root, "Google", "Chrome", "Application", "chrome.exe"),
+				filepath.Join(root, "Microsoft", "Edge", "Application", "msedge.exe"),
+			)
+		}
+		for _, candidate := range candidates {
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, nil
+			}
+		}
+	}
 
 	return "", os.ErrNotExist
 }

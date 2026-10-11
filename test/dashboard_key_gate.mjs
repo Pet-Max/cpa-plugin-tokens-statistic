@@ -1,13 +1,12 @@
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
+import { readDashboardFile, startDashboardServer, defaultFixtures } from './helpers.mjs';
 
 const [htmlPath, chromePath] = process.argv.slice(2);
 if (!htmlPath || !chromePath) {
   throw new Error('usage: node test/dashboard_key_gate.mjs <dashboard-html-path> <google-chrome-path>');
 }
 
-const dashboardHTML = await readFile(htmlPath);
+const dashboardHTML = await readDashboardFile(htmlPath);
 const resourceBase = '/v0/resource/plugins/key-gate-browser-test';
 const managementBase = '/v0/management/plugins/key-gate-browser-test';
 const GOOD_KEY = 'gate-browser-key';
@@ -46,82 +45,18 @@ const groupRow = {
   total_tokens: 30,
 };
 
-let lastAuthHeader = '';
 
-const server = createServer((request, response) => {
-  const url = new URL(request.url, 'http://127.0.0.1');
-  const sendJSON = (value) => {
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify(value));
-  };
-  const rejectUnauthorized = () => {
-    response.writeHead(401, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ error: 'invalid management key' }));
-  };
-
-  if (url.pathname === `${resourceBase}/dashboard`) {
-    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    response.end(dashboardHTML);
-    return;
-  }
-  if (url.pathname.startsWith(`${managementBase}/`)) {
-    lastAuthHeader = request.headers.authorization || '';
-    const key = lastAuthHeader.startsWith('Bearer ') ? lastAuthHeader.slice(7) : '';
-    if (!key || DENY_KEYS.has(key)) {
-      rejectUnauthorized();
-      return;
-    }
-  }
-  if (url.pathname === `${managementBase}/api-key-info`) {
-    // A realistic delay reproduces the window between the dashboard rendering
-    // and the tracking state arriving: nothing tracking-related may show there.
-    setTimeout(() => sendJSON({ api_key_tracking_enabled: true, api_key_uses_default_secret: false, api_key_labels: {} }), 900);
-    return;
-  }
-  if (url.pathname === `${managementBase}/preferences`) {
-    sendJSON({});
-    return;
-  }
-  if (url.pathname === `${managementBase}/stats/initial`) {
-    sendJSON({
-      generated_at: '2026-08-23T12:00:00.000Z',
-      last_used: '2026-08-23T12:00:00.000Z',
-      models: [{ model: 'gate-browser-model', provider: 'openai', requests: 2, input_tokens: 10, output_tokens: 20, total_tokens: 30 }],
-      sources: [],
-      bucket_seconds: 86400,
-    });
-    return;
-  }
-  if (url.pathname === `${managementBase}/stats/trends`) {
-    sendJSON({ model_series: [{ hour: '2026-08-23T11:00:00Z', model: 'gate-browser-model', requests: 1, input_tokens: 10, output_tokens: 20, total_tokens: 30 }], bucket_seconds: 86400 });
-    return;
-  }
-  if (url.pathname === `${managementBase}/stats/groups`) {
-    sendJSON({ items: [groupRow], total: 1 });
-    return;
-  }
-  if (url.pathname === `${managementBase}/requests`) {
-    sendJSON({ generated_at: '2026-08-23T12:00:00.000Z', range: '24h', total: 1, offset: 0, limit: 100, items: [requestRow] });
-    return;
-  }
-  if (url.pathname === `${managementBase}/costs`) {
-    sendJSON({ summary: { requests: 1, priced_requests: 0, unpriced_requests: 1 }, models: [], price_book_revision: 0 });
-    return;
-  }
-  if (url.pathname === `${managementBase}/prices`) {
-    sendJSON({ prices: {}, revision: 0 });
-    return;
-  }
-  sendJSON({});
+// Auth-gate semantics: empty/absent keys and deny-listed keys are rejected
+// with 401 before any endpoint runs; /api-key-info arrives late (900ms) to
+// reproduce the window where tracking state has not landed yet.
+const host = startDashboardServer({
+  dashboardHTML,
+  pluginId: 'key-gate-browser-test',
+  fixtures: defaultFixtures({ model: 'gate-browser-model' }),
+  denyKeys: ['wrong-key', 'bad-stored-key'],
+  apiKeyInfoDelayMs: 900,
 });
-
-await new Promise((resolve, reject) => {
-  server.once('error', reject);
-  server.listen(0, '127.0.0.1', resolve);
-});
-
-const address = server.address();
-const dashboardURL = `http://127.0.0.1:${address.port}${resourceBase}/dashboard`;
+const dashboardURL = await host.ready;
 const browser = await chromium.launch({ executablePath: chromePath, headless: true });
 
 try {
@@ -258,14 +193,14 @@ try {
 
   // Phase B: remembered credentials survive a tab restart with no sessionStorage.
   await page.evaluate(() => sessionStorage.clear());
-  lastAuthHeader = '';
+  host.resetLastAuthHeader();
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForResponse((response) => new URL(response.url()).pathname === `${managementBase}/stats/initial`);
   if (await page.locator('#authView').evaluate((node) => !node.hidden)) {
     throw new Error('remembered credentials must skip the auth page on the next visit');
   }
-  if (lastAuthHeader !== `Bearer ${GOOD_KEY}`) {
-    throw new Error(`remembered key must be replayed verbatim, got authorization header "${lastAuthHeader}"`);
+  if (host.lastAuthHeader() !== `Bearer ${GOOD_KEY}`) {
+    throw new Error(`remembered key must be replayed verbatim, got authorization header "${host.lastAuthHeader()}"`);
   }
 
   // Phase C: a remembered key the host now rejects sends the visitor back to
@@ -274,7 +209,7 @@ try {
     localStorage.setItem('tokens-statistic-remembered-key', window.__obf(JSON.stringify({ key: 'bad-stored-key' })));
     sessionStorage.clear();
   });
-  lastAuthHeader = '';
+  host.resetLastAuthHeader();
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => {
     const view = document.getElementById('authView');
@@ -287,8 +222,8 @@ try {
   if (invalidText !== INVALID_MESSAGE) {
     throw new Error(`rejected remembered key must show the invalid-key message, got ${invalidText}`);
   }
-  if (lastAuthHeader !== 'Bearer bad-stored-key') {
-    throw new Error(`the stored key must be tried against the host, got authorization header "${lastAuthHeader}"`);
+  if (host.lastAuthHeader() !== 'Bearer bad-stored-key') {
+    throw new Error(`the stored key must be tried against the host, got authorization header "${host.lastAuthHeader()}"`);
   }
   const leftover = await page.evaluate(() => localStorage.getItem('tokens-statistic-remembered-key'));
   if (leftover) {
@@ -302,14 +237,14 @@ try {
     localStorage.setItem('cli-proxy-auth', window.__obf(JSON.stringify({ managementKey: 'wrong-key' })));
     sessionStorage.clear();
   });
-  lastAuthHeader = '';
+  host.resetLastAuthHeader();
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => {
     const view = document.getElementById('authView');
     return view && !view.hidden && document.getElementById('authMessage').classList.contains('error');
   });
-  if (lastAuthHeader !== 'Bearer wrong-key') {
-    throw new Error(`the center-remembered key must be tried against the host, got authorization header "${lastAuthHeader}"`);
+  if (host.lastAuthHeader() !== 'Bearer wrong-key') {
+    throw new Error(`the center-remembered key must be tried against the host, got authorization header "${host.lastAuthHeader()}"`);
   }
   const centerInvalidText = await page.evaluate(() => document.getElementById('authMessage').textContent);
   if (centerInvalidText !== CENTER_INVALID_MESSAGE) {
@@ -321,5 +256,5 @@ try {
   }
 } finally {
   await browser.close();
-  server.close();
+  host.close();
 }

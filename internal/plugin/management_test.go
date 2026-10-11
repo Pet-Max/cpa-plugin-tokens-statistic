@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/apikey"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/store"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
@@ -77,11 +80,11 @@ func TestManagementRegistrationUsesDynamicPluginID(t *testing.T) {
 func TestCompactStatsResourcesShapePagingAndMethods(t *testing.T) {
 	config := testConfig(t)
 	config.SyncOnRecord = true
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &pluginRuntime{store: store, config: config}
+	runtime := &pluginRuntime{store: st, config: config}
 	defer runtime.shutdown()
 	registration, err := json.Marshal(pluginapi.ManagementRegistrationRequest{ResourceBasePath: "/v0/resource/plugins/test"})
 	if err != nil {
@@ -91,12 +94,12 @@ func TestCompactStatsResourcesShapePagingAndMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := nowUTC().Truncate(5 * time.Minute)
-	for _, usage := range []normalizedUsage{
-		{Dimensions: Dimensions{Provider: "openai", Model: "alpha", Source: "cli"}, RequestedAt: now.Add(-4 * time.Minute), Counters: Counters{Requests: 2, TotalTokens: 20}},
-		{Dimensions: Dimensions{Provider: "anthropic", Model: "beta", Source: "cli"}, RequestedAt: now.Add(-3 * time.Minute), Counters: Counters{Requests: 1, TotalTokens: 10}},
-		{Dimensions: Dimensions{Provider: "openai", Model: "alpha", Source: "web"}, RequestedAt: now.Add(-2 * time.Minute), Counters: Counters{Requests: 3, TotalTokens: 30}},
+	for _, usage := range []store.Usage{
+		{Dimensions: store.Dimensions{Provider: "openai", Model: "alpha", Source: "cli"}, RequestedAt: now.Add(-4 * time.Minute), Counters: store.Counters{Requests: 2, TotalTokens: 20}},
+		{Dimensions: store.Dimensions{Provider: "anthropic", Model: "beta", Source: "cli"}, RequestedAt: now.Add(-3 * time.Minute), Counters: store.Counters{Requests: 1, TotalTokens: 10}},
+		{Dimensions: store.Dimensions{Provider: "openai", Model: "alpha", Source: "web"}, RequestedAt: now.Add(-2 * time.Minute), Counters: store.Counters{Requests: 3, TotalTokens: 30}},
 	} {
-		if err := store.Record(usage); err != nil {
+		if err := st.Record(usage); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -117,18 +120,18 @@ func TestCompactStatsResourcesShapePagingAndMethods(t *testing.T) {
 	if initialResponse.StatusCode != http.StatusOK || strings.Contains(string(initialResponse.Body), `"groups"`) || strings.Contains(string(initialResponse.Body), `"model_series"`) {
 		t.Fatalf("initial response = %+v", initialResponse)
 	}
-	var initial InitialStatsResponse
+	var initial store.InitialStatsResponse
 	if err := json.Unmarshal(initialResponse.Body, &initial); err != nil || initial.SchemaVersion != 2 || initial.BucketSeconds != 300 || initial.Summary.TotalTokens != 60 || len(initial.Models) != 2 || len(initial.Series) != 1 {
 		t.Fatalf("initial payload = %+v, %v", initial, err)
 	}
 	trendResponse := call(http.MethodGet, runtime.routes.statsTrendPath, query)
-	var trend StatsTrendResponse
+	var trend store.StatsTrendResponse
 	if trendResponse.StatusCode != http.StatusOK || json.Unmarshal(trendResponse.Body, &trend) != nil || trend.BucketSeconds != 300 || len(trend.ModelSeries) != 2 {
 		t.Fatalf("trend response = %+v, payload=%+v", trendResponse, trend)
 	}
 	groupQuery := url.Values{"range": {"24h"}, "offset": {"0"}, "limit": {"1"}, "sort": {"model"}, "direction": {"asc"}}
 	groupsResponse := call(http.MethodGet, runtime.routes.statsGroupsPath, groupQuery)
-	var groups GroupStatsPage
+	var groups store.GroupStatsPage
 	if groupsResponse.StatusCode != http.StatusOK || json.Unmarshal(groupsResponse.Body, &groups) != nil || groups.Total != 3 || len(groups.Items) != 1 || groups.Items[0].Model != "alpha" {
 		t.Fatalf("groups response = %+v, payload=%+v", groupsResponse, groups)
 	}
@@ -148,11 +151,11 @@ func TestCompactStatsResourcesShapePagingAndMethods(t *testing.T) {
 
 func TestManagementStatsAndReset(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &pluginRuntime{store: store, config: config, routes: registeredRoutes{
+	runtime := &pluginRuntime{store: st, config: config, routes: registeredRoutes{
 		pluginID:         "test",
 		statsPath:        "/v0/management/plugins/test/stats",
 		resetPath:        "/v0/management/plugins/test/reset",
@@ -165,7 +168,7 @@ func TestManagementStatsAndReset(t *testing.T) {
 		preferencesPath:  "/v0/management/plugins/test/preferences",
 	}}
 	defer runtime.shutdown()
-	if err := store.Record(normalizedUsage{Dimensions: Dimensions{Model: "m"}, RequestedAt: nowUTC(), Counters: Counters{Requests: 1, TotalTokens: 3}}); err != nil {
+	if err := st.Record(store.Usage{Dimensions: store.Dimensions{Model: "m"}, RequestedAt: nowUTC(), Counters: store.Counters{Requests: 1, TotalTokens: 3}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -337,13 +340,13 @@ func TestManagementStatsAndReset(t *testing.T) {
 
 func TestSyncModelsDevUsesProvidedCLIModels(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &pluginRuntime{store: store, config: config}
+	runtime := &pluginRuntime{store: st, config: config}
 	defer runtime.shutdown()
-	if err := store.Record(normalizedUsage{Dimensions: Dimensions{Model: "usage-only"}, RequestedAt: time.Now().UTC(), Counters: Counters{Requests: 1}}); err != nil {
+	if err := st.Record(store.Usage{Dimensions: store.Dimensions{Model: "usage-only"}, RequestedAt: time.Now().UTC(), Counters: store.Counters{Requests: 1}}); err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -366,11 +369,11 @@ func TestSyncModelsDevUsesProvidedCLIModels(t *testing.T) {
 
 func TestDashboardPreferencesManagementValidation(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &pluginRuntime{store: store, config: config, routes: registeredRoutes{
+	runtime := &pluginRuntime{store: st, config: config, routes: registeredRoutes{
 		pluginID:        "test",
 		preferencesPath: "/v0/management/plugins/test/preferences",
 	}}
@@ -417,16 +420,16 @@ func TestDashboardPreferencesManagementValidation(t *testing.T) {
 func TestConcurrentPriceSyncReturnsConflict(t *testing.T) {
 	config := testConfig(t)
 	config.SyncOnRecord = true
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &pluginRuntime{store: store, config: config, routes: registeredRoutes{
+	runtime := &pluginRuntime{store: st, config: config, routes: registeredRoutes{
 		pluginID:      "test",
 		priceSyncPath: "/v0/management/plugins/test/prices/sync",
 	}}
 	defer runtime.shutdown()
-	if err := store.Record(normalizedUsage{Dimensions: Dimensions{Model: "m"}, RequestedAt: time.Now().UTC(), Counters: Counters{Requests: 1}}); err != nil {
+	if err := st.Record(store.Usage{Dimensions: store.Dimensions{Model: "m"}, RequestedAt: time.Now().UTC(), Counters: store.Counters{Requests: 1}}); err != nil {
 		t.Fatal(err)
 	}
 	started := make(chan struct{})
@@ -465,13 +468,13 @@ func TestConcurrentPriceSyncReturnsConflict(t *testing.T) {
 func TestStalePriceSyncDoesNotOverwriteNewSettings(t *testing.T) {
 	config := testConfig(t)
 	config.SyncOnRecord = true
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &pluginRuntime{store: store, config: config}
+	runtime := &pluginRuntime{store: st, config: config}
 	defer runtime.shutdown()
-	if err := store.Record(normalizedUsage{Dimensions: Dimensions{Model: "m"}, RequestedAt: time.Now().UTC(), Counters: Counters{Requests: 1}}); err != nil {
+	if err := st.Record(store.Usage{Dimensions: store.Dimensions{Model: "m"}, RequestedAt: time.Now().UTC(), Counters: store.Counters{Requests: 1}}); err != nil {
 		t.Fatal(err)
 	}
 	started := make(chan struct{})
@@ -490,16 +493,16 @@ func TestStalePriceSyncDoesNotOverwriteNewSettings(t *testing.T) {
 		done <- err
 	}()
 	<-started
-	newSettings := PriceSyncSettings{ProviderPriority: []string{"anthropic"}, IgnoredSuffixes: []string{"-custom"}}
-	if _, err := store.SavePriceBook(map[string]ModelPrice{}, &newSettings); err != nil {
+	newSettings := store.PriceSyncSettings{ProviderPriority: []string{"anthropic"}, IgnoredSuffixes: []string{"-custom"}}
+	if _, err := st.SavePriceBook(map[string]store.ModelPrice{}, &newSettings); err != nil {
 		close(release)
 		t.Fatal(err)
 	}
 	close(release)
-	if err := <-done; err == nil || errorHTTPStatus(err) != http.StatusConflict {
+	if err := <-done; err == nil || errs.HTTPStatus(err) != http.StatusConflict {
 		t.Fatalf("stale sync error = %v", err)
 	}
-	book, err := store.QueryPriceBook()
+	book, err := st.QueryPriceBook()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,22 +513,22 @@ func TestStalePriceSyncDoesNotOverwriteNewSettings(t *testing.T) {
 
 func TestManagementSourceFilterAppliesToStatsRequestsAndCosts(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &pluginRuntime{store: store, config: config, routes: registeredRoutes{
+	runtime := &pluginRuntime{store: st, config: config, routes: registeredRoutes{
 		pluginID:     "test",
 		statsPath:    "/v0/management/plugins/test/stats",
 		requestsPath: "/v0/management/plugins/test/requests",
 		costsPath:    "/v0/management/plugins/test/costs",
 	}}
 	defer runtime.shutdown()
-	for _, usage := range []normalizedUsage{
-		{Dimensions: Dimensions{Model: "alpha", Source: "cli"}, RequestedAt: nowUTC(), Counters: Counters{Requests: 1, TotalTokens: 3}},
-		{Dimensions: Dimensions{Model: "beta", Source: "web"}, RequestedAt: nowUTC(), Counters: Counters{Requests: 1, TotalTokens: 5}},
+	for _, usage := range []store.Usage{
+		{Dimensions: store.Dimensions{Model: "alpha", Source: "cli"}, RequestedAt: nowUTC(), Counters: store.Counters{Requests: 1, TotalTokens: 3}},
+		{Dimensions: store.Dimensions{Model: "beta", Source: "web"}, RequestedAt: nowUTC(), Counters: store.Counters{Requests: 1, TotalTokens: 5}},
 	} {
-		if err := store.Record(usage); err != nil {
+		if err := st.Record(usage); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -560,22 +563,22 @@ func TestManagementSourceFilterAppliesToStatsRequestsAndCosts(t *testing.T) {
 
 func TestManagementIgnoresLegacyAuthenticationIdentityParameters(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &pluginRuntime{store: store, config: config, routes: registeredRoutes{
+	runtime := &pluginRuntime{store: st, config: config, routes: registeredRoutes{
 		pluginID:     "test",
 		statsPath:    "/v0/management/plugins/test/stats",
 		requestsPath: "/v0/management/plugins/test/requests",
 		costsPath:    "/v0/management/plugins/test/costs",
 	}}
 	defer runtime.shutdown()
-	for _, usage := range []normalizedUsage{
-		{Dimensions: Dimensions{Model: "alpha", Source: "Codex-user@example.com"}, RequestedAt: nowUTC(), Counters: Counters{Requests: 1, TotalTokens: 3}},
-		{Dimensions: Dimensions{Model: "beta", Source: "Antigravity-user@example.com"}, RequestedAt: nowUTC(), Counters: Counters{Requests: 1, TotalTokens: 5}},
+	for _, usage := range []store.Usage{
+		{Dimensions: store.Dimensions{Model: "alpha", Source: "Codex-user@example.com"}, RequestedAt: nowUTC(), Counters: store.Counters{Requests: 1, TotalTokens: 3}},
+		{Dimensions: store.Dimensions{Model: "beta", Source: "Antigravity-user@example.com"}, RequestedAt: nowUTC(), Counters: store.Counters{Requests: 1, TotalTokens: 5}},
 	} {
-		if err := store.Record(usage); err != nil {
+		if err := st.Record(usage); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -625,30 +628,30 @@ func TestDashboardSecurityContract(t *testing.T) {
 
 func TestManagementBackupAndRestore(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &pluginRuntime{store: store, config: config, routes: registeredRoutes{
+	runtime := &pluginRuntime{store: st, config: config, routes: registeredRoutes{
 		pluginID:    "test",
 		backupPath:  "/v0/management/plugins/test/backup",
 		restorePath: "/v0/management/plugins/test/restore",
 	}}
 	defer runtime.shutdown()
-	if err := store.Record(normalizedUsage{
-		Dimensions:  Dimensions{Model: "backup-endpoint", Source: "cli"},
+	if err := st.Record(store.Usage{
+		Dimensions:  store.Dimensions{Model: "backup-endpoint", Source: "cli"},
 		RequestedAt: nowUTC(),
-		Counters:    Counters{Requests: 1, InputTokens: 4, OutputTokens: 5, TotalTokens: 9},
+		Counters:    store.Counters{Requests: 1, InputTokens: 4, OutputTokens: 5, TotalTokens: 9},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SaveDashboardPreferences(DashboardPreferences{
+	if _, err := st.SaveDashboardPreferences(store.DashboardPreferences{
 		RequestPageSize:   25,
 		DimensionPageSize: 50,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SaveModelPrices(map[string]ModelPrice{
+	if _, err := st.SaveModelPrices(map[string]store.ModelPrice{
 		"backup-endpoint": {Input: 1.5, Output: 6},
 	}); err != nil {
 		t.Fatal(err)
@@ -679,7 +682,7 @@ func TestManagementBackupAndRestore(t *testing.T) {
 	if err := os.WriteFile(backupPath, response.Body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateRestoreDatabase(backupPath); err != nil {
+	if err := store.ValidateRestoreDatabase(backupPath); err != nil {
 		t.Fatalf("backup body is not a valid bolt database: %v", err)
 	}
 	backupBody := append([]byte(nil), response.Body...)
@@ -735,7 +738,7 @@ func TestManagementBackupAndRestore(t *testing.T) {
 
 	// Oversized restore body is rejected at the management layer before touching storage.
 	// Call restoreResponse directly to avoid base64-encoding a 64 MiB payload through JSON.
-	oversizedBody := make([]byte, maxDatabaseBackupBytes+1)
+	oversizedBody := make([]byte, store.MaxDatabaseBackupBytes+1)
 	response, err = runtime.restoreResponse(pluginapi.ManagementRequest{
 		Method: http.MethodPost,
 		Path:   runtime.routes.restorePath,
@@ -749,23 +752,23 @@ func TestManagementBackupAndRestore(t *testing.T) {
 		t.Fatalf("oversized restore response: %+v, %v", response, err)
 	}
 
-	if err := store.Reset(); err != nil {
+	if err := st.Reset(); err != nil {
 		t.Fatal(err)
 	}
 	// Mutate preferences/prices after backup so restore must reintroduce the originals.
 	// Reset only clears usage counters, not preferences or prices.
-	if _, err := store.SaveDashboardPreferences(DashboardPreferences{
+	if _, err := st.SaveDashboardPreferences(store.DashboardPreferences{
 		RequestPageSize:   100,
 		DimensionPageSize: 100,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SaveModelPrices(map[string]ModelPrice{
+	if _, err := st.SaveModelPrices(map[string]store.ModelPrice{
 		"mutated-model": {Input: 9, Output: 9},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	stats, err := store.Query("retention")
+	stats, err := st.Query("retention")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -786,21 +789,21 @@ func TestManagementBackupAndRestore(t *testing.T) {
 	if err != nil || response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"restored":true`) {
 		t.Fatalf("round-trip restore response: %+v, %v", response, err)
 	}
-	stats, err = store.Query("retention")
+	stats, err = st.Query("retention")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if stats.Summary.TotalTokens != 9 {
 		t.Fatalf("restored total tokens = %d, want 9", stats.Summary.TotalTokens)
 	}
-	preferences, err := store.QueryDashboardPreferences()
+	preferences, err := st.QueryDashboardPreferences()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if preferences.RequestPageSize != 25 || preferences.DimensionPageSize != 50 {
 		t.Fatalf("restored preferences = %+v, want request=25 dimension=50", preferences)
 	}
-	prices, err := store.QueryModelPrices()
+	prices, err := st.QueryModelPrices()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -812,8 +815,8 @@ func TestManagementBackupAndRestore(t *testing.T) {
 func TestAPIKeyIdentitiesFromRequestUnionsRepeatedRefs(t *testing.T) {
 	hashA := strings.Repeat("a", 32)
 	hashB := strings.Repeat("b", 32)
-	refA := apiKeyRef(1, hashA)
-	refB := apiKeyRef(2, hashB)
+	refA := apikey.Ref(1, hashA)
+	refB := apikey.Ref(2, hashB)
 	request := pluginapi.ManagementRequest{Query: url.Values{"api_key_ref": {refA, "", refB, refA}}}
 	got, err := apiKeyIdentitiesFromRequest(request, nil)
 	if err != nil {
@@ -825,10 +828,10 @@ func TestAPIKeyIdentitiesFromRequestUnionsRepeatedRefs(t *testing.T) {
 }
 
 func TestAPIKeyIdentitiesFromRequestRejectsRefAndHashTogether(t *testing.T) {
-	refA := apiKeyRef(1, strings.Repeat("a", 32))
+	refA := apikey.Ref(1, strings.Repeat("a", 32))
 	hashB := strings.Repeat("b", 32)
 	_, err := apiKeyIdentitiesFromRequest(pluginapi.ManagementRequest{Query: url.Values{"api_key_ref": {refA}, "api_key_hash": {hashB}}}, nil)
-	if err == nil || errorHTTPStatus(err) != http.StatusBadRequest || err.Error() != "api_key_ref and api_key_hash cannot be used together" {
+	if err == nil || errs.HTTPStatus(err) != http.StatusBadRequest || err.Error() != "api_key_ref and api_key_hash cannot be used together" {
 		t.Fatalf("mixed filter error = %v", err)
 	}
 }
@@ -837,19 +840,19 @@ func TestAPIKeyIdentitiesFromRequestRejectsRepeatedHashes(t *testing.T) {
 	hashA := strings.Repeat("a", 32)
 	hashB := strings.Repeat("b", 32)
 	_, err := apiKeyIdentitiesFromRequest(pluginapi.ManagementRequest{Query: url.Values{"api_key_hash": {hashA, hashB}}}, nil)
-	if err == nil || errorHTTPStatus(err) != http.StatusBadRequest || err.Error() != "api_key_hash cannot be repeated; use api_key_ref" {
+	if err == nil || errs.HTTPStatus(err) != http.StatusBadRequest || err.Error() != "api_key_hash cannot be repeated; use api_key_ref" {
 		t.Fatalf("repeated hash error = %v", err)
 	}
 }
 
 func TestDashboardPreferencesManagementSaveRoute(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
 	runtime := &pluginRuntime{
-		store:  store,
+		store:  st,
 		config: config,
 		routes: registeredRoutes{
 			pluginID:        "test",
@@ -878,7 +881,7 @@ func TestDashboardPreferencesManagementSaveRoute(t *testing.T) {
 		t.Fatalf("wrong management save method response = %+v", wrongMethod)
 	}
 
-	body, err := json.Marshal(DashboardPreferences{
+	body, err := json.Marshal(store.DashboardPreferences{
 		RequestPageSize:      25,
 		DimensionPageSize:    50,
 		HiddenRequestColumns: []string{"model", "source"},
@@ -892,7 +895,7 @@ func TestDashboardPreferencesManagementSaveRoute(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("management preferences save response = %+v body=%s", response, response.Body)
 	}
-	var saved DashboardPreferences
+	var saved store.DashboardPreferences
 	if err := json.Unmarshal(response.Body, &saved); err != nil || saved.RequestPageSize != 25 || saved.DimensionPageSize != 50 || len(saved.HiddenRequestColumns) != 2 || saved.TimeRangeMode != "last_7_days" || saved.TokenDisplayMode != "B" {
 		t.Fatalf("saved preferences payload = %s, err = %v", response.Body, err)
 	}
@@ -907,7 +910,7 @@ func TestDashboardPreferencesManagementSaveRoute(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("resource preferences read response = %+v body=%s", response, response.Body)
 	}
-	saved = DashboardPreferences{}
+	saved = store.DashboardPreferences{}
 	if err := json.Unmarshal(response.Body, &saved); err != nil || saved.RequestPageSize != 25 || saved.DimensionPageSize != 50 || saved.TokenDisplayMode != "B" {
 		t.Fatalf("stored preferences payload = %s, err = %v", response.Body, err)
 	}
@@ -917,26 +920,26 @@ func TestDashboardPreferencesManagementSaveRoute(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("legacy query parameters must be ignored on GET = %+v body=%s", response, response.Body)
 	}
-	saved = DashboardPreferences{}
+	saved = store.DashboardPreferences{}
 	if err := json.Unmarshal(response.Body, &saved); err != nil || saved.RequestPageSize != 25 || saved.DimensionPageSize != 50 || saved.TokenDisplayMode != "B" {
 		t.Fatalf("legacy query must not change stored preferences = %s, err = %v", response.Body, err)
 	}
 }
 
 func TestSortGroupStatsEstimatedCostAndPriceSource(t *testing.T) {
-	models := func(items []GroupStats) []string {
+	models := func(items []store.GroupStats) []string {
 		out := make([]string, 0, len(items))
 		for _, item := range items {
 			out = append(out, item.Model)
 		}
 		return out
 	}
-	newItems := func() []GroupStats {
-		return []GroupStats{
-			{Dimensions: Dimensions{Model: "m-a"}},
-			{Dimensions: Dimensions{Model: "m-b"}},
-			{Dimensions: Dimensions{Model: "m-c"}},
-			{Dimensions: Dimensions{Model: "m-d"}},
+	newItems := func() []store.GroupStats {
+		return []store.GroupStats{
+			{Dimensions: store.Dimensions{Model: "m-a"}},
+			{Dimensions: store.Dimensions{Model: "m-b"}},
+			{Dimensions: store.Dimensions{Model: "m-c"}},
+			{Dimensions: store.Dimensions{Model: "m-d"}},
 		}
 	}
 	costs := map[string]groupSortAux{

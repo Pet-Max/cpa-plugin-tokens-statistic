@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/config"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/store"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
@@ -58,9 +60,9 @@ func TestMaybeCompressResponse(t *testing.T) {
 		},
 		Body: body,
 	}
-	config := Config{CompressionEnabled: true, CompressionMinBytes: 1}
+	cfg := config.Config{CompressionEnabled: true, CompressionMinBytes: 1}
 
-	compressed := maybeCompressResponse(baseRequest, baseResponse, config)
+	compressed := maybeCompressResponse(baseRequest, baseResponse, cfg)
 	if compressed.Headers.Get("Content-Encoding") != "gzip" {
 		t.Fatalf("Content-Encoding = %q", compressed.Headers.Get("Content-Encoding"))
 	}
@@ -88,7 +90,7 @@ func TestMaybeCompressResponse(t *testing.T) {
 		t.Fatal("compression mutated the original response headers")
 	}
 
-	compressedManagement := maybeCompressResponse(pluginapi.ManagementRequest{Path: "/v0/management/plugins/test/stats", Headers: baseRequest.Headers}, baseResponse, config)
+	compressedManagement := maybeCompressResponse(pluginapi.ManagementRequest{Path: "/v0/management/plugins/test/stats", Headers: baseRequest.Headers}, baseResponse, cfg)
 	if compressedManagement.Headers.Get("Content-Encoding") != "gzip" {
 		t.Fatalf("management JSON route was not compressed: %+v", compressedManagement.Headers)
 	}
@@ -97,17 +99,17 @@ func TestMaybeCompressResponse(t *testing.T) {
 		name     string
 		request  pluginapi.ManagementRequest
 		response pluginapi.ManagementResponse
-		config   Config
+		config   config.Config
 	}{
-		{name: "disabled", request: baseRequest, response: baseResponse, config: Config{CompressionMinBytes: 1}},
-		{name: "client without gzip", request: pluginapi.ManagementRequest{Path: baseRequest.Path}, response: baseResponse, config: config},
-		{name: "below threshold", request: baseRequest, response: baseResponse, config: Config{CompressionEnabled: true, CompressionMinBytes: len(body) + 1}},
-		{name: "already encoded", request: baseRequest, response: responseWithHeader(baseResponse, "Content-Encoding", "br"), config: config},
-		{name: "partial content", request: baseRequest, response: responseWithHeader(baseResponse, "Content-Range", "bytes 0-99/3200"), config: config},
-		{name: "no transform", request: baseRequest, response: responseWithHeader(baseResponse, "Cache-Control", "private, no-transform"), config: config},
-		{name: "binary", request: baseRequest, response: responseWithHeader(baseResponse, "Content-Type", "application/octet-stream"), config: config},
-		{name: "no content", request: baseRequest, response: responseWithStatus(baseResponse, http.StatusNoContent), config: config},
-		{name: "not modified", request: baseRequest, response: responseWithStatus(baseResponse, http.StatusNotModified), config: config},
+		{name: "disabled", request: baseRequest, response: baseResponse, config: config.Config{CompressionMinBytes: 1}},
+		{name: "client without gzip", request: pluginapi.ManagementRequest{Path: baseRequest.Path}, response: baseResponse, config: cfg},
+		{name: "below threshold", request: baseRequest, response: baseResponse, config: config.Config{CompressionEnabled: true, CompressionMinBytes: len(body) + 1}},
+		{name: "already encoded", request: baseRequest, response: responseWithHeader(baseResponse, "Content-Encoding", "br"), config: cfg},
+		{name: "partial content", request: baseRequest, response: responseWithHeader(baseResponse, "Content-Range", "bytes 0-99/3200"), config: cfg},
+		{name: "no transform", request: baseRequest, response: responseWithHeader(baseResponse, "Cache-Control", "private, no-transform"), config: cfg},
+		{name: "binary", request: baseRequest, response: responseWithHeader(baseResponse, "Content-Type", "application/octet-stream"), config: cfg},
+		{name: "no content", request: baseRequest, response: responseWithStatus(baseResponse, http.StatusNoContent), config: cfg},
+		{name: "not modified", request: baseRequest, response: responseWithStatus(baseResponse, http.StatusNotModified), config: cfg},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -124,7 +126,7 @@ func TestMaybeCompressResponse(t *testing.T) {
 
 func TestHandleManagementCompressionScope(t *testing.T) {
 	runtime := &pluginRuntime{
-		config: Config{CompressionEnabled: true, CompressionMinBytes: 1},
+		config: config.Config{CompressionEnabled: true, CompressionMinBytes: 1},
 		routes: registeredRoutes{
 			pluginID:      "test",
 			dashboardPath: "/v0/resource/plugins/test/dashboard",
@@ -179,7 +181,7 @@ func TestCompressedManagementResponseSurvivesRPCEnvelope(t *testing.T) {
 			Headers:    http.Header{"Content-Type": []string{"application/json"}},
 			Body:       body,
 		},
-		Config{CompressionEnabled: true, CompressionMinBytes: 1},
+		config.Config{CompressionEnabled: true, CompressionMinBytes: 1},
 	)
 	if response.Headers.Get("Content-Encoding") != "gzip" {
 		t.Fatal("test response was not compressed")
@@ -202,12 +204,12 @@ func TestPublicJSONRoutesCompress(t *testing.T) {
 	config := testConfig(t)
 	config.CompressionEnabled = true
 	config.CompressionMinBytes = 1
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
 	runtime := &pluginRuntime{
-		store:  store,
+		store:  st,
 		config: config,
 		routes: registeredRoutes{
 			pluginID:  "test",
@@ -216,10 +218,10 @@ func TestPublicJSONRoutesCompress(t *testing.T) {
 		},
 	}
 	defer runtime.shutdown()
-	if err := store.Record(normalizedUsage{
-		Dimensions:  Dimensions{Model: "gpt-test"},
+	if err := st.Record(store.Usage{
+		Dimensions:  store.Dimensions{Model: "gpt-test"},
 		RequestedAt: time.Now().UTC(),
-		Counters:    Counters{Requests: 1, InputTokens: 20, OutputTokens: 10, TotalTokens: 30},
+		Counters:    store.Counters{Requests: 1, InputTokens: 20, OutputTokens: 10, TotalTokens: 30},
 	}); err != nil {
 		t.Fatal(err)
 	}

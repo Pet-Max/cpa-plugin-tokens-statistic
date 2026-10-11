@@ -101,7 +101,7 @@ plugins:
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
   CC="zig cc -target x86_64-linux-gnu" \
   go build -buildmode=c-shared -trimpath -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.1.2" \
+  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.1.4" \
   -o tokens-statistic.so .
 ```
 

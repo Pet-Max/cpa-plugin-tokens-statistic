@@ -5,29 +5,30 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 	"unicode/utf8"
 
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/apikey"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/store"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
 func TestAPIKeyLabelResourceValidationAndPersistence(t *testing.T) {
 	config := testConfig(t)
-	config.APIKeySecret = defaultAPIKeySecret
+	config.APIKeySecret = apikey.DefaultSecret
 	config.SyncOnRecord = true
-	ctx, _ := deriveCryptoContext(config.APIKeySecret)
-	store, err := openStoreWithCrypto(config, ctx)
+	ctx, _ := apikey.DeriveCryptoContext(config.APIKeySecret)
+	st, err := store.OpenWithCrypto(config, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	key := "label-resource-test-key"
-	hash := apiKeyFingerprint(key, ctx.indexKey)
-	ref := apiKeyRef(1, hash)
-	if err := store.Record(encryptedUsageForTest(t, ctx, key, "label-model", 1)); err != nil {
+	hash := apikey.Fingerprint(key, ctx.IndexKey)
+	ref := apikey.Ref(1, hash)
+	if err := st.Record(encryptedUsageForTest(t, ctx, key, "label-model", 1)); err != nil {
 		t.Fatal(err)
 	}
 	runtime := &pluginRuntime{
-		store:  store,
+		store:  st,
 		config: config,
 		crypto: ctx,
 		routes: registeredRoutes{
@@ -58,7 +59,7 @@ func TestAPIKeyLabelResourceValidationAndPersistence(t *testing.T) {
 		"trailing JSON":  []byte(`{"ref":"` + ref + `","label":"x"}{}`),
 		"invalid ref":    []byte(`{"ref":"g0:ABC","label":"x"}`),
 		"uppercase hash": []byte(`{"ref":"g1:` + strings.ToUpper(hash) + `","label":"x"}`),
-		"too long":       []byte(`{"ref":"` + ref + `","label":"` + strings.Repeat("界", maxAPIKeyLabelRunes+1) + `"}`),
+		"too long":       []byte(`{"ref":"` + ref + `","label":"` + strings.Repeat("界", store.MaxAPIKeyLabelRunes+1) + `"}`),
 		"invalid utf8":   append([]byte(`{"ref":"`+ref+`","label":"`), 0xff, '"', '}'),
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -70,7 +71,7 @@ func TestAPIKeyLabelResourceValidationAndPersistence(t *testing.T) {
 	if response := call(http.MethodPut, make([]byte, (16<<10)+1), true); response.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized body status = %d", response.StatusCode)
 	}
-	unknownBody, _ := json.Marshal(map[string]string{"ref": apiKeyRef(1, strings.Repeat("0", 32)), "label": "unknown"})
+	unknownBody, _ := json.Marshal(map[string]string{"ref": apikey.Ref(1, strings.Repeat("0", 32)), "label": "unknown"})
 	if response := call(http.MethodPut, unknownBody, true); response.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown ref status = %d body=%s", response.StatusCode, response.Body)
 	}
@@ -85,25 +86,25 @@ func TestAPIKeyLabelResourceValidationAndPersistence(t *testing.T) {
 	if getErr != nil || getResponse.StatusCode != http.StatusOK {
 		t.Fatalf("GET save status = %d body=%s err=%v", getResponse.StatusCode, getResponse.Body, getErr)
 	}
-	labels, err := store.APIKeyLabels()
+	labels, err := st.APIKeyLabels()
 	if err != nil || labels[ref] != "GET client" {
 		t.Fatalf("labels = %+v, %v", labels, err)
 	}
 	labels[ref] = "mutated by caller"
-	fresh, err := store.APIKeyLabels()
+	fresh, err := st.APIKeyLabels()
 	if err != nil || fresh[ref] != "GET client" {
 		t.Fatalf("actor label map was not cloned: %+v, %v", fresh, err)
 	}
 
-	if err := store.Close(); err != nil {
+	if err := st.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = openStoreWithCrypto(config, ctx)
+	st, err = store.OpenWithCrypto(config, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime.store = store
-	fresh, err = store.APIKeyLabels()
+	runtime.store = st
+	fresh, err = st.APIKeyLabels()
 	if err != nil || fresh[ref] != "GET client" {
 		t.Fatalf("reloaded labels = %+v, %v", fresh, err)
 	}
@@ -114,32 +115,5 @@ func TestAPIKeyLabelResourceValidationAndPersistence(t *testing.T) {
 	}
 	if response := call(http.MethodPut, deleteBody, true); response.StatusCode != http.StatusOK {
 		t.Fatalf("idempotent delete status = %d body=%s", response.StatusCode, response.Body)
-	}
-}
-
-func TestAPIKeyLabelCallsReturnAfterStoreClose(t *testing.T) {
-	config := testConfig(t)
-	store, err := openStore(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 2)
-	go func() {
-		_, err := store.APIKeyLabels()
-		done <- err
-	}()
-	go func() { done <- store.SetAPIKeyLabel(strings.Repeat("0", 32), "") }()
-	for range 2 {
-		select {
-		case err := <-done:
-			if err == nil {
-				t.Fatal("closed store label call succeeded")
-			}
-		case <-time.After(time.Second):
-			t.Fatal("closed store label call blocked")
-		}
 	}
 }

@@ -2,7 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
-	"fmt"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 )
@@ -36,7 +36,7 @@ func dispatchRPC(method string, request []byte) []byte {
 	}
 
 	if err != nil {
-		return marshalError("plugin_error", err.Error(), false, errorHTTPStatus(err))
+		return marshalError("plugin_error", err.Error(), false, errs.HTTPStatus(err))
 	}
 	return marshalOK(result)
 }
@@ -67,42 +67,6 @@ func marshalError(code, message string, retryable bool, status int) []byte {
 		return []byte(`{"ok":false,"error":{"code":"marshal_error","message":"failed to encode error"}}`)
 	}
 	return raw
-}
-
-type statusError struct {
-	status int
-	err    error
-}
-
-func (e *statusError) Error() string { return e.err.Error() }
-func (e *statusError) Unwrap() error { return e.err }
-
-func withStatus(status int, format string, args ...any) error {
-	return &statusError{status: status, err: fmt.Errorf(format, args...)}
-}
-
-func errorHTTPStatus(err error) int {
-	var target *statusError
-	if err != nil && asStatusError(err, &target) {
-		return target.status
-	}
-	return 500
-}
-
-func asStatusError(err error, target **statusError) bool {
-	for err != nil {
-		if current, ok := err.(*statusError); ok {
-			*target = current
-			return true
-		}
-		type unwrapper interface{ Unwrap() error }
-		unwrapped, ok := err.(unwrapper)
-		if !ok {
-			break
-		}
-		err = unwrapped.Unwrap()
-	}
-	return false
 }
 
 // Public facade for the small cgo entry point in the repository root.

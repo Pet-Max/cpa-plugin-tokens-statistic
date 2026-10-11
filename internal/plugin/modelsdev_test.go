@@ -2,6 +2,8 @@ package plugin
 
 import (
 	"context"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/store"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,7 +24,7 @@ func TestMatchModelsDevPricesUsesPrioritySuffixAndContextTiers(t *testing.T) {
 		"anthropic": {ID: "anthropic", Models: map[string]modelsDevModel{"claude-test": {Cost: &anthropicCost}}},
 		"openai":    {ID: "openai", Models: map[string]modelsDevModel{"claude-test": {Cost: &openAICost}}},
 	}
-	settings := PriceSyncSettings{
+	settings := store.PriceSyncSettings{
 		ProviderPriority: []string{"anthropic", "openai"},
 		IgnoredSuffixes:  []string{"-thinking"},
 	}
@@ -68,7 +70,7 @@ func TestMatchModelsDevPricesImportsServiceTierModes(t *testing.T) {
 		},
 	}
 
-	result, err := matchModelsDevPrices(catalog, []string{"gpt-test"}, defaultPriceSyncSettings(), time.Now())
+	result, err := matchModelsDevPrices(catalog, []string{"gpt-test"}, store.DefaultPriceSyncSettings(), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +95,7 @@ func TestNormalizeSyncModelsValidatesCLIProxyAPIList(t *testing.T) {
 	if _, err := normalizeSyncModels(nil); err == nil {
 		t.Fatal("accepted empty CLIProxyAPI model list")
 	}
-	if _, err := normalizeSyncModels([]string{strings.Repeat("m", maxDimensionRunes+1)}); err == nil {
+	if _, err := normalizeSyncModels([]string{strings.Repeat("m", store.MaxDimensionRunes+1)}); err == nil {
 		t.Fatal("accepted overlong CLIProxyAPI model name")
 	}
 }
@@ -103,7 +105,7 @@ func TestMatchModelsDevPricesAppliesExplicitMapping(t *testing.T) {
 	catalog := map[string]modelsDevProvider{
 		"provider": {Models: map[string]modelsDevModel{"catalog-model": {Cost: &cost}}},
 	}
-	settings := PriceSyncSettings{Mappings: []PriceSyncMapping{{Source: "local-model", Target: "catalog-model"}}}
+	settings := store.PriceSyncSettings{Mappings: []store.PriceSyncMapping{{Source: "local-model", Target: "catalog-model"}}}
 	result, err := matchModelsDevPrices(catalog, []string{"local-model"}, settings, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -194,8 +196,8 @@ func TestModelsDevFetcherRejectsOversizedResponseAndTimeout(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "fetch models.dev catalog") {
 		t.Fatalf("timeout error = %v", err)
 	}
-	if public := publicModelsDevError(err); errorHTTPStatus(public) != http.StatusGatewayTimeout {
-		t.Fatalf("public timeout status = %d, error=%v", errorHTTPStatus(public), public)
+	if public := publicModelsDevError(err); errs.HTTPStatus(public) != http.StatusGatewayTimeout {
+		t.Fatalf("public timeout status = %d, error=%v", errs.HTTPStatus(public), public)
 	}
 }
 
@@ -218,11 +220,11 @@ func TestModelsDevRedirectPolicy(t *testing.T) {
 
 func TestModelsDevPublicErrorsAreStable(t *testing.T) {
 	generic := publicModelsDevError(context.Canceled)
-	if errorHTTPStatus(generic) != http.StatusGatewayTimeout || generic.Error() != "models.dev synchronization timed out" {
+	if errs.HTTPStatus(generic) != http.StatusGatewayTimeout || generic.Error() != "models.dev synchronization timed out" {
 		t.Fatalf("timeout public error = %v", generic)
 	}
 	generic = publicModelsDevError(assertionError("proxy secret"))
-	if errorHTTPStatus(generic) != http.StatusBadGateway || strings.Contains(generic.Error(), "proxy secret") {
+	if errs.HTTPStatus(generic) != http.StatusBadGateway || strings.Contains(generic.Error(), "proxy secret") {
 		t.Fatalf("gateway public error = %v", generic)
 	}
 }
@@ -233,19 +235,19 @@ func (e assertionError) Error() string { return string(e) }
 
 func TestStoreModelPriceSyncPreservesManualOverrides(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
-	if _, err := store.SaveModelPrices(map[string]ModelPrice{"manual": {Input: 1}}); err != nil {
+	defer st.Close()
+	if _, err := st.SaveModelPrices(map[string]store.ModelPrice{"manual": {Input: 1}}); err != nil {
 		t.Fatal(err)
 	}
-	settings := defaultPriceSyncSettings()
-	response, err := store.ApplyModelPriceSync(map[string]ModelPrice{
-		"manual": {Input: 99, Source: priceSourceModelsDev},
-		"synced": {Input: 2, Source: priceSourceModelsDev, CatalogProvider: "openai"},
-	}, settings, PriceSyncMetadata{Observed: 2, Matched: 2, CompletedAt: time.Now().UTC()}, 1)
+	settings := store.DefaultPriceSyncSettings()
+	response, err := st.ApplyModelPriceSync(map[string]store.ModelPrice{
+		"manual": {Input: 99, Source: store.PriceSourceModelsDev},
+		"synced": {Input: 2, Source: store.PriceSourceModelsDev, CatalogProvider: "openai"},
+	}, settings, store.PriceSyncMetadata{Observed: 2, Matched: 2, CompletedAt: time.Now().UTC()}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,25 +264,25 @@ func TestStoreModelPriceSyncPreservesManualOverrides(t *testing.T) {
 
 func TestPriceBookPersistsSyncMetadata(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	settings := PriceSyncSettings{ProviderPriority: []string{"anthropic"}, IgnoredSuffixes: []string{"-preview"}}
-	if _, err := store.ApplyModelPriceSync(map[string]ModelPrice{
-		"m": {Input: 3, Source: priceSourceModelsDev, ContextTiers: []ContextPriceTier{{Threshold: 200_000, Input: 6}}},
-	}, settings, PriceSyncMetadata{Observed: 1, Matched: 1, CompletedAt: time.Now().UTC()}, 0); err != nil {
+	settings := store.PriceSyncSettings{ProviderPriority: []string{"anthropic"}, IgnoredSuffixes: []string{"-preview"}}
+	if _, err := st.ApplyModelPriceSync(map[string]store.ModelPrice{
+		"m": {Input: 3, Source: store.PriceSourceModelsDev, ContextTiers: []store.ContextPriceTier{{Threshold: 200_000, Input: 6}}},
+	}, settings, store.PriceSyncMetadata{Observed: 1, Matched: 1, CompletedAt: time.Now().UTC()}, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Close(); err != nil {
+	if err := st.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = openStore(config)
+	st, err = store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
-	response, err := store.QueryPriceBook()
+	defer st.Close()
+	response, err := st.QueryPriceBook()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,59 +296,59 @@ func TestPriceBookPersistsSyncMetadata(t *testing.T) {
 
 func TestSavingUnchangedSyncedPricePreservesSource(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
-	response, err := store.ApplyModelPriceSync(map[string]ModelPrice{
-		"m": {Input: 3, Source: priceSourceModelsDev, CatalogProvider: "anthropic", CatalogModel: "m"},
-	}, defaultPriceSyncSettings(), PriceSyncMetadata{Observed: 1, Matched: 1, CompletedAt: time.Now().UTC()}, 0)
+	defer st.Close()
+	response, err := st.ApplyModelPriceSync(map[string]store.ModelPrice{
+		"m": {Input: 3, Source: store.PriceSourceModelsDev, CatalogProvider: "anthropic", CatalogModel: "m"},
+	}, store.DefaultPriceSyncSettings(), store.PriceSyncMetadata{Observed: 1, Matched: 1, CompletedAt: time.Now().UTC()}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err = store.SavePriceBook(response.Prices, nil)
+	response, err = st.SavePriceBook(response.Prices, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Prices["m"].Source != priceSourceModelsDev {
+	if response.Prices["m"].Source != store.PriceSourceModelsDev {
 		t.Fatalf("unchanged sync source = %q", response.Prices["m"].Source)
 	}
-	changed := cloneModelPrices(response.Prices)
+	changed := store.CloneModelPrices(response.Prices)
 	price := changed["m"]
 	price.Input = 4
 	changed["m"] = price
-	response, err = store.SavePriceBook(changed, nil)
+	response, err = st.SavePriceBook(changed, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Prices["m"].Source != priceSourceManual || response.Prices["m"].CatalogProvider != "" {
+	if response.Prices["m"].Source != store.PriceSourceManual || response.Prices["m"].CatalogProvider != "" {
 		t.Fatalf("edited sync price = %+v", response.Prices["m"])
 	}
 }
 
 func TestPriceSaveDeletesEntriesByOmission(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
-	response, err := store.ApplyModelPriceSync(map[string]ModelPrice{
-		"synced": {Input: 3, Source: priceSourceModelsDev},
-	}, defaultPriceSyncSettings(), PriceSyncMetadata{Observed: 1, Matched: 1, CompletedAt: time.Now().UTC()}, 0)
+	defer st.Close()
+	response, err := st.ApplyModelPriceSync(map[string]store.ModelPrice{
+		"synced": {Input: 3, Source: store.PriceSourceModelsDev},
+	}, store.DefaultPriceSyncSettings(), store.PriceSyncMetadata{Observed: 1, Matched: 1, CompletedAt: time.Now().UTC()}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	prices := cloneModelPrices(response.Prices)
-	prices["manual"] = ModelPrice{Input: 1}
-	response, err = store.SavePriceBook(prices, nil)
+	prices := store.CloneModelPrices(response.Prices)
+	prices["manual"] = store.ModelPrice{Input: 1}
+	response, err = st.SavePriceBook(prices, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	delete(prices, "synced")
 	delete(prices, "manual")
-	response, err = store.SavePriceBook(prices, nil)
+	response, err = st.SavePriceBook(prices, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

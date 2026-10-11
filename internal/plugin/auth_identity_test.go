@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"errors"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/store"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,11 +13,11 @@ import (
 
 func TestAPIKeyBaseURLSourceSurvivesPersistedReadPath(t *testing.T) {
 	config := testConfig(t)
-	store, err := openStore(config)
+	st, err := store.Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &pluginRuntime{store: store, config: config}
+	runtime := &pluginRuntime{store: st, config: config}
 	defer runtime.shutdown()
 	runtime.setAuthRuntimeLookup(func(authIndex string) (authRuntimeMetadata, error) {
 		return authRuntimeMetadata{
@@ -40,7 +41,7 @@ func TestAPIKeyBaseURLSourceSurvivesPersistedReadPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	page, err := store.QueryRequests("24h", 0, 10, "")
+	page, err := st.QueryRequests("24h", 0, 10, "")
 	if err != nil || page.Total != 2 {
 		t.Fatalf("request page = %+v, %v", page, err)
 	}
@@ -55,7 +56,7 @@ func TestAPIKeyBaseURLSourceSurvivesPersistedReadPath(t *testing.T) {
 		t.Fatalf("configured base URLs missing from read path: %v", sources)
 	}
 
-	stats, err := store.Query("24h")
+	stats, err := st.Query("24h")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +65,7 @@ func TestAPIKeyBaseURLSourceSurvivesPersistedReadPath(t *testing.T) {
 			t.Fatalf("hardcoded provider address surfaced in stats: %q", group.Source)
 		}
 	}
-	if err := store.Close(); err != nil {
+	if err := st.Close(); err != nil {
 		t.Fatal(err)
 	}
 	_ = os.RemoveAll(filepath.Dir(config.DataPath))
@@ -74,7 +75,7 @@ func TestIdentityFromRuntimeMetadataBuildsSafeProviderAccountLabel(t *testing.T)
 	tests := []struct {
 		name     string
 		metadata authRuntimeMetadata
-		usage    Dimensions
+		usage    store.Dimensions
 		want     usageIdentity
 	}{
 		{name: "codex email", metadata: authRuntimeMetadata{Provider: "codex", Email: "user@example.com"}, want: usageIdentity{Provider: "Codex", Account: "user@example.com"}},
@@ -82,8 +83,8 @@ func TestIdentityFromRuntimeMetadataBuildsSafeProviderAccountLabel(t *testing.T)
 		{name: "xai becomes grok", metadata: authRuntimeMetadata{Provider: "xai", Email: "user@example.com"}, want: usageIdentity{Provider: "Grok", Account: "user@example.com"}},
 		{name: "oauth account fallback", metadata: authRuntimeMetadata{Provider: "codex", AccountType: "oauth", Account: "oauth-account"}, want: usageIdentity{Provider: "Codex", Account: "oauth-account"}},
 		{name: "safe label fallback", metadata: authRuntimeMetadata{Provider: "custom", Label: "team-account"}, want: usageIdentity{Provider: "custom", Account: "team-account"}},
-		{name: "api key account ignored", metadata: authRuntimeMetadata{Provider: "codex", AccountType: "api_key", Account: "sk-secret-1234567890"}, usage: Dimensions{Source: "cli"}, want: usageIdentity{Provider: "Codex", Account: "cli"}},
-		{name: "source fallback is sanitized", metadata: authRuntimeMetadata{Provider: "codex"}, usage: Dimensions{Source: "https://user:secret@example.com/v1/?api_key=secret"}, want: usageIdentity{Provider: "Codex", Account: "https://example.com/v1"}},
+		{name: "api key account ignored", metadata: authRuntimeMetadata{Provider: "codex", AccountType: "api_key", Account: "sk-secret-1234567890"}, usage: store.Dimensions{Source: "cli"}, want: usageIdentity{Provider: "Codex", Account: "cli"}},
+		{name: "source fallback is sanitized", metadata: authRuntimeMetadata{Provider: "codex"}, usage: store.Dimensions{Source: "https://user:secret@example.com/v1/?api_key=secret"}, want: usageIdentity{Provider: "Codex", Account: "https://example.com/v1"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -100,11 +101,11 @@ func TestAuthIdentityResolverCachesSanitizedMetadataAndUsesCurrentSourceFallback
 		calls.Add(1)
 		return authRuntimeMetadata{Provider: "codex", AccountType: "api_key", Account: "sk-secret-1234567890"}, nil
 	})
-	first, err := resolver.resolve("stable-auth-index", Dimensions{Source: "first"})
+	first, err := resolver.resolve("stable-auth-index", store.Dimensions{Source: "first"})
 	if err != nil || first != (usageIdentity{Provider: "Codex", Account: "first"}) {
 		t.Fatalf("first resolve = %+v, %v", first, err)
 	}
-	second, err := resolver.resolve("stable-auth-index", Dimensions{Source: "second"})
+	second, err := resolver.resolve("stable-auth-index", store.Dimensions{Source: "second"})
 	if err != nil || second != (usageIdentity{Provider: "Codex", Account: "second"}) {
 		t.Fatalf("cached resolve = %+v, %v", second, err)
 	}
@@ -136,7 +137,7 @@ func TestAuthIdentityResolverCoalescesConcurrentLookups(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			identity, err := resolver.resolve("stable-auth-index", Dimensions{Source: "cli"})
+			identity, err := resolver.resolve("stable-auth-index", store.Dimensions{Source: "cli"})
 			results <- identity
 			errs <- err
 		}()
@@ -168,7 +169,7 @@ func TestAuthIdentityResolverNegativeCachesFailures(t *testing.T) {
 		return authRuntimeMetadata{}, errors.New("runtime lookup failed")
 	})
 	for range 2 {
-		if _, err := resolver.resolve("stable-auth-index", Dimensions{}); err == nil {
+		if _, err := resolver.resolve("stable-auth-index", store.Dimensions{}); err == nil {
 			t.Fatal("lookup failure was not returned")
 		}
 	}
@@ -188,20 +189,20 @@ func TestResolveUsageIdentityAppliesRuntimeBaseURLForAPIKeyAuth(t *testing.T) {
 		}, nil
 	})
 
-	usage := &normalizedUsage{
-		Dimensions: Dimensions{
+	usage := &store.Usage{
+		Dimensions: store.Dimensions{
 			Provider: "xai",
 			AuthType: "apikey",
 			Source:   "xai-secret-key-1234567890",
 		},
-		authIndex: "stable-auth-index",
+		AuthIndex: "stable-auth-index",
 	}
 	runtime.resolveUsageIdentity(usage)
 	if usage.Dimensions.Source != "https://relay.example.com/v1" {
 		t.Fatalf("source = %q, want bare sanitized runtime base URL", usage.Dimensions.Source)
 	}
-	if usage.authIndex != "" {
-		t.Fatalf("auth index = %q, want cleared", usage.authIndex)
+	if usage.AuthIndex != "" {
+		t.Fatalf("auth index = %q, want cleared", usage.AuthIndex)
 	}
 }
 
@@ -211,14 +212,14 @@ func TestResolveUsageIdentityPrefersRecordBaseURLOverRuntimeLookup(t *testing.T)
 		return authRuntimeMetadata{Provider: "xai", AccountType: "api_key", BaseURL: "https://runtime.example.com/v1"}, nil
 	})
 
-	usage := &normalizedUsage{
-		Dimensions: Dimensions{
+	usage := &store.Usage{
+		Dimensions: store.Dimensions{
 			Provider: "xai",
 			AuthType: "apikey",
 			Source:   "xai-secret-key-1234567890",
 		},
-		authIndex: "stable-auth-index",
-		baseURL:   "https://record.example.com/v1",
+		AuthIndex: "stable-auth-index",
+		BaseURL:   "https://record.example.com/v1",
 	}
 	runtime.resolveUsageIdentity(usage)
 	if usage.Dimensions.Source != "https://record.example.com/v1" {
@@ -232,13 +233,13 @@ func TestResolveUsageIdentityFallsBackToCompositeLabelWithoutBaseURL(t *testing.
 		return authRuntimeMetadata{Provider: "codex", AccountType: "oauth", Email: "user@example.com"}, nil
 	})
 
-	usage := &normalizedUsage{
-		Dimensions: Dimensions{
+	usage := &store.Usage{
+		Dimensions: store.Dimensions{
 			Provider: "codex",
 			AuthType: "oauth",
 			Source:   "user@example.com",
 		},
-		authIndex: "stable-auth-index",
+		AuthIndex: "stable-auth-index",
 	}
 	runtime.resolveUsageIdentity(usage)
 	if usage.Dimensions.Source != "Codex-user@example.com" {

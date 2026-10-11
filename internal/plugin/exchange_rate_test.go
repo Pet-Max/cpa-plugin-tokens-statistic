@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
@@ -84,8 +85,8 @@ func TestExchangeRateFetcherRejectsOversizedResponseAndTimeout(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "fetch exchange rate") {
 		t.Fatalf("timeout error = %v", err)
 	}
-	if public := publicExchangeRateError(err); errorHTTPStatus(public) != http.StatusGatewayTimeout {
-		t.Fatalf("public timeout status = %d, error=%v", errorHTTPStatus(public), public)
+	if public := publicExchangeRateError(err); errs.HTTPStatus(public) != http.StatusGatewayTimeout {
+		t.Fatalf("public timeout status = %d, error=%v", errs.HTTPStatus(public), public)
 	}
 }
 
@@ -126,7 +127,7 @@ func TestExchangeRateServiceCachesAndFallsBackToStale(t *testing.T) {
 		t.Fatalf("backoff stale rate = %+v, calls=%d, err=%v", staleAgain, calls.Load(), err)
 	}
 	now = now.Add(exchangeRateStaleTTL)
-	if _, err := service.latest(); err == nil || errorHTTPStatus(err) != http.StatusBadGateway {
+	if _, err := service.latest(); err == nil || errs.HTTPStatus(err) != http.StatusBadGateway {
 		t.Fatalf("expired stale error = %v", err)
 	}
 }
@@ -259,7 +260,7 @@ func TestExchangeRateServiceCoalescesConcurrentFailures(t *testing.T) {
 		}()
 	}
 	for i := 0; i < callers; i++ {
-		if err := <-results; err == nil || errorHTTPStatus(err) != http.StatusBadGateway {
+		if err := <-results; err == nil || errs.HTTPStatus(err) != http.StatusBadGateway {
 			t.Fatalf("coalesced failure %d = %v, want 502", i, err)
 		}
 	}

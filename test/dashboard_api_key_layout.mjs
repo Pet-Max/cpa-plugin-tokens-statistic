@@ -1,41 +1,19 @@
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
+import { readDashboardFile, startDashboardServer, defaultFixtures } from './helpers.mjs';
 
 const [htmlPath, chromePath] = process.argv.slice(2);
 if (!htmlPath || !chromePath) {
   throw new Error('usage: node test/dashboard_api_key_layout.mjs <dashboard-html-path> <google-chrome-path>');
 }
 
-const dashboardHTML = await readFile(htmlPath);
-const resourceBase = '/v0/resource/plugins/api-key-layout-browser-test';
-const managementBase = '/v0/management/plugins/api-key-layout-browser-test';
-const server = createServer((request, response) => {
-  const url = new URL(request.url, 'http://127.0.0.1');
-  const sendJSON = (value) => {
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify(value));
-  };
+const dashboardHTML = await readDashboardFile(htmlPath);
 
-  if (url.pathname === `${resourceBase}/dashboard`) {
-    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    response.end(dashboardHTML);
-    return;
-  }
-  if (url.pathname === `${managementBase}/api-key-info`) {
-    sendJSON({
-      api_key_tracking_enabled: true,
-      api_key_uses_default_secret: false,
-      api_key_labels: {},
-    });
-    return;
-  }
-  if (url.pathname === `${managementBase}/preferences`) {
-    sendJSON({});
-    return;
-  }
-  if (url.pathname === `${managementBase}/stats/initial`) {
-    sendJSON({
+const host = startDashboardServer({
+  dashboardHTML,
+  pluginId: 'api-key-layout-browser-test',
+  fixtures: {
+    ...defaultFixtures(),
+    statsInitial: {
       generated_at: '2026-09-07T00:00:00.000Z',
       last_used: '2026-09-07T00:00:00.000Z',
       models: [],
@@ -44,35 +22,14 @@ const server = createServer((request, response) => {
         { ref: 'g1:0123456789abcdef0123456789abcdef', key: 'sk-test-key', status: 'available' },
       ],
       bucket_seconds: 86400,
-    });
-    return;
-  }
-  if (url.pathname === `${managementBase}/stats/trends`) {
-    sendJSON({ model_series: [], bucket_seconds: 86400 });
-    return;
-  }
-  if (url.pathname === `${managementBase}/stats/groups` || url.pathname === `${managementBase}/requests`) {
-    sendJSON({ items: [], total: 0 });
-    return;
-  }
-  if (url.pathname === `${managementBase}/costs`) {
-    sendJSON({ summary: { requests: 0, priced_requests: 0, unpriced_requests: 0 }, models: [], price_book_revision: 0 });
-    return;
-  }
-  if (url.pathname === `${managementBase}/prices`) {
-    sendJSON({ prices: {}, revision: 0 });
-    return;
-  }
-  sendJSON({});
+    },
+    statsTrends: 'no-response',
+    statsGroups: { items: [], total: 0 },
+    requests: { items: [], total: 0 },
+  },
 });
-
-await new Promise((resolve, reject) => {
-  server.once('error', reject);
-  server.listen(0, '127.0.0.1', resolve);
-});
-
-const address = server.address();
-const dashboardURL = `http://127.0.0.1:${address.port}${resourceBase}/dashboard`;
+const dashboardURL = await host.ready;
+const managementBase = host.managementBase;
 const browser = await chromium.launch({ executablePath: chromePath, headless: true });
 
 const readRects = (page, selectors) => page.evaluate((list) => {
@@ -174,5 +131,5 @@ try {
   await mobileContext.close();
 } finally {
   await browser.close();
-  server.close();
+  host.close();
 }

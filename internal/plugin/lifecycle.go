@@ -9,12 +9,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/apikey"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/config"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/store"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
 // version is set at build time with:
 // -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=<version>
-var version = "0.1.2"
+var version = "0.1.4"
 
 // maxSupportedRPCSchema is intentionally independent from the SDK's latest
 // schema. Future hosts may negotiate down to this verified contract without
@@ -41,11 +45,11 @@ type pluginRuntime struct {
 	lifecycleMu       sync.Mutex
 	priceSyncMu       sync.Mutex
 	mu                sync.RWMutex
-	store             *Store
-	config            Config
-	crypto            cryptoContext
+	store             *store.Store
+	config            config.Config
+	crypto            apikey.CryptoContext
 	apiKeyGeneration  uint64
-	apiKeyGenerations map[uint64]APIKeyCryptoGeneration
+	apiKeyGenerations map[uint64]apikey.APIKeyCryptoGeneration
 	routes            registeredRoutes
 	modelsDevFetcher  *modelsDevFetcher
 	exchangeRates     *exchangeRateService
@@ -93,8 +97,8 @@ func negotiateRPCSchema(hostSchema uint32) uint32 {
 	return maxSupportedRPCSchema
 }
 
-func (r *pluginRuntime) applyConfig(config Config) error {
-	crypto, err := deriveCryptoContext(config.APIKeySecret)
+func (r *pluginRuntime) applyConfig(config config.Config) error {
+	crypto, err := apikey.DeriveCryptoContext(config.APIKeySecret)
 	if err != nil {
 		return err
 	}
@@ -120,7 +124,7 @@ func (r *pluginRuntime) applyConfig(config Config) error {
 		return nil
 	}
 
-	next, err := openStoreWithCrypto(config, crypto)
+	next, err := store.OpenWithCrypto(config, crypto)
 	if err != nil {
 		return err
 	}
@@ -140,28 +144,28 @@ func (r *pluginRuntime) applyConfig(config Config) error {
 }
 
 func (r *pluginRuntime) handleUsage(raw []byte) (map[string]any, error) {
-	usage, err := decodeUsage(raw, nowUTC())
+	usage, err := store.DecodeUsage(raw, nowUTC())
 	if err != nil {
-		return nil, withStatus(400, "%v", err)
+		return nil, errs.WithStatus(400, "%v", err)
 	}
 	r.resolveUsageIdentity(&usage)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.store == nil {
-		return nil, withStatus(503, "plugin storage is not initialized")
+		return nil, errs.WithStatus(503, "plugin storage is not initialized")
 	}
 	crypto := r.crypto
 	generation := r.apiKeyGeneration
-	if generation == 0 && crypto.enabled {
+	if generation == 0 && crypto.Enabled {
 		generation, _ = r.store.APIKeyCryptoState()
 	}
 	plainKey := usage.Dimensions.APIKey
-	if plainKey != "" && crypto.enabled {
+	if plainKey != "" && crypto.Enabled {
 		if generation == 0 {
 			return nil, errors.New("API key tracking has no active crypto generation")
 		}
-		fingerprint := apiKeyFingerprint(plainKey, crypto.indexKey)
-		ciphertext, err := encryptAPIKeyForGeneration(crypto, plainKey, fingerprint, generation)
+		fingerprint := apikey.Fingerprint(plainKey, crypto.IndexKey)
+		ciphertext, err := apikey.EncryptForGeneration(crypto, plainKey, fingerprint, generation)
 		if err != nil {
 			return nil, fmt.Errorf("encrypt api key: %w", err)
 		}
@@ -174,8 +178,8 @@ func (r *pluginRuntime) handleUsage(raw []byte) (map[string]any, error) {
 		usage.Dimensions.APIKeyHash = ""
 		usage.Dimensions.APIKeyGeneration = 0
 		usage.Dimensions.APIKeyStatus = ""
-		if crypto.enabled {
-			usage.Dimensions.APIKeyStatus = apiKeyStatusSourceMissing
+		if crypto.Enabled {
+			usage.Dimensions.APIKeyStatus = apikey.StatusSourceMissing
 		}
 	}
 	if err := r.store.Record(usage); err != nil {
@@ -191,8 +195,8 @@ func (r *pluginRuntime) shutdown() error {
 	r.mu.Lock()
 	store := r.store
 	r.store = nil
-	r.config = Config{}
-	r.crypto = cryptoContext{}
+	r.config = config.Config{}
+	r.crypto = apikey.CryptoContext{}
 	r.apiKeyGeneration = 0
 	r.apiKeyGenerations = nil
 	r.routes = registeredRoutes{}
@@ -205,7 +209,7 @@ func (r *pluginRuntime) shutdown() error {
 	return store.Close()
 }
 
-func decodeLifecycle(raw []byte) (lifecycleRequest, Config, error) {
+func decodeLifecycle(raw []byte) (lifecycleRequest, config.Config, error) {
 	if len(raw) == 0 {
 		raw = []byte(`{}`)
 	}
@@ -214,18 +218,18 @@ func decodeLifecycle(raw []byte) (lifecycleRequest, Config, error) {
 		SchemaVersion uint32          `json:"schema_version"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return lifecycleRequest{}, Config{}, fmt.Errorf("decode lifecycle request: %w", err)
+		return lifecycleRequest{}, config.Config{}, fmt.Errorf("decode lifecycle request: %w", err)
 	}
 	configYAML, err := decodeLifecycleConfigYAML(envelope.ConfigYAML)
 	if err != nil {
-		return lifecycleRequest{}, Config{}, err
+		return lifecycleRequest{}, config.Config{}, err
 	}
 	request := lifecycleRequest{ConfigYAML: configYAML, SchemaVersion: envelope.SchemaVersion}
-	config, err := parseConfig(request.ConfigYAML)
+	parsed, err := config.Parse(request.ConfigYAML)
 	if err != nil {
-		return lifecycleRequest{}, Config{}, err
+		return lifecycleRequest{}, config.Config{}, err
 	}
-	return request, config, nil
+	return request, parsed, nil
 }
 
 // decodeLifecycleConfigYAML accepts the host's standard base64 encoding of a

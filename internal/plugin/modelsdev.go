@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/store"
 	"io"
 	"mime"
 	"net/http"
@@ -83,22 +85,22 @@ type modelsDevTierKind struct {
 type modelsDevCandidate struct {
 	provider string
 	model    string
-	price    ModelPrice
+	price    store.ModelPrice
 	rank     int
 }
 
 type modelsDevMatchResult struct {
-	Prices    map[string]ModelPrice
+	Prices    map[string]store.ModelPrice
 	Observed  int
 	Matched   int
 	Unmatched int
 }
 
-func (r *pluginRuntime) syncModelsDev(settings *PriceSyncSettings, sourceModels []string) (ModelPricesResponse, error) {
+func (r *pluginRuntime) syncModelsDev(settings *store.PriceSyncSettings, sourceModels []string) (store.ModelPricesResponse, error) {
 	r.priceSyncMu.Lock()
 	if r.priceSyncing {
 		r.priceSyncMu.Unlock()
-		return ModelPricesResponse{}, withStatus(http.StatusConflict, "model price synchronization is already running")
+		return store.ModelPricesResponse{}, errs.WithStatus(http.StatusConflict, "model price synchronization is already running")
 	}
 	r.priceSyncing = true
 	r.priceSyncMu.Unlock()
@@ -109,26 +111,26 @@ func (r *pluginRuntime) syncModelsDev(settings *PriceSyncSettings, sourceModels 
 	}()
 
 	r.mu.RLock()
-	store := r.store
+	st := r.store
 	fetcher := r.modelsDevFetcher
 	r.mu.RUnlock()
-	if store == nil {
-		return ModelPricesResponse{}, withStatus(http.StatusServiceUnavailable, "plugin storage is not initialized")
+	if st == nil {
+		return store.ModelPricesResponse{}, errs.WithStatus(http.StatusServiceUnavailable, "plugin storage is not initialized")
 	}
-	priceBook, err := store.QueryPriceBook()
+	priceBook, err := st.QueryPriceBook()
 	if err != nil {
-		return ModelPricesResponse{}, err
+		return store.ModelPricesResponse{}, err
 	}
 	activeSettings := priceBook.SyncSettings
 	if settings != nil {
-		activeSettings, err = normalizePriceSyncSettings(*settings)
+		activeSettings, err = store.NormalizePriceSyncSettings(*settings)
 		if err != nil {
-			return ModelPricesResponse{}, withStatus(http.StatusBadRequest, "%v", err)
+			return store.ModelPricesResponse{}, errs.WithStatus(http.StatusBadRequest, "%v", err)
 		}
 	}
 	models, err := normalizeSyncModels(sourceModels)
 	if err != nil {
-		return ModelPricesResponse{}, withStatus(http.StatusBadRequest, "%v", err)
+		return store.ModelPricesResponse{}, errs.WithStatus(http.StatusBadRequest, "%v", err)
 	}
 	if fetcher == nil {
 		fetcher = newModelsDevFetcher()
@@ -137,26 +139,26 @@ func (r *pluginRuntime) syncModelsDev(settings *PriceSyncSettings, sourceModels 
 	defer cancel()
 	catalog, err := fetcher.fetch(ctx)
 	if err != nil {
-		return ModelPricesResponse{}, publicModelsDevError(err)
+		return store.ModelPricesResponse{}, publicModelsDevError(err)
 	}
 	now := time.Now().UTC()
 	matched, err := matchModelsDevPrices(catalog, models, activeSettings, now)
 	if err != nil {
-		return ModelPricesResponse{}, withStatus(http.StatusBadGateway, "models.dev returned an invalid price catalog")
+		return store.ModelPricesResponse{}, errs.WithStatus(http.StatusBadGateway, "models.dev returned an invalid price catalog")
 	}
-	metadata := PriceSyncMetadata{
-		Source:      priceSourceModelsDev,
+	metadata := store.PriceSyncMetadata{
+		Source:      store.PriceSourceModelsDev,
 		CompletedAt: now,
 		Observed:    matched.Observed,
 		Matched:     matched.Matched,
 		Unmatched:   matched.Unmatched,
 	}
-	return store.ApplyModelPriceSync(matched.Prices, activeSettings, metadata, priceBook.Revision)
+	return st.ApplyModelPriceSync(matched.Prices, activeSettings, metadata, priceBook.Revision)
 }
 
 func normalizeSyncModels(input []string) ([]string, error) {
-	if len(input) > maxModelPriceEntries {
-		return nil, fmt.Errorf("model synchronization must contain at most %d models", maxModelPriceEntries)
+	if len(input) > store.MaxModelPriceEntries {
+		return nil, fmt.Errorf("model synchronization must contain at most %d models", store.MaxModelPriceEntries)
 	}
 	seen := make(map[string]struct{}, len(input))
 	models := make([]string, 0, len(input))
@@ -165,7 +167,7 @@ func normalizeSyncModels(input []string) ([]string, error) {
 		if model == "" {
 			continue
 		}
-		if !utf8.ValidString(model) || utf8.RuneCountInString(model) > maxDimensionRunes {
+		if !utf8.ValidString(model) || utf8.RuneCountInString(model) > store.MaxDimensionRunes {
 			return nil, fmt.Errorf("synchronized model name %q is invalid or too long", model)
 		}
 		if _, exists := seen[model]; exists {
@@ -183,9 +185,9 @@ func normalizeSyncModels(input []string) ([]string, error) {
 
 func publicModelsDevError(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		return withStatus(http.StatusGatewayTimeout, "models.dev synchronization timed out")
+		return errs.WithStatus(http.StatusGatewayTimeout, "models.dev synchronization timed out")
 	}
-	return withStatus(http.StatusBadGateway, "models.dev synchronization failed")
+	return errs.WithStatus(http.StatusBadGateway, "models.dev synchronization failed")
 }
 
 func newModelsDevFetcher() *modelsDevFetcher {
@@ -260,8 +262,8 @@ func (f *modelsDevFetcher) fetch(ctx context.Context) (map[string]modelsDevProvi
 	return catalog, nil
 }
 
-func matchModelsDevPrices(catalog map[string]modelsDevProvider, observed []string, settings PriceSyncSettings, now time.Time) (modelsDevMatchResult, error) {
-	normalizedSettings, err := normalizePriceSyncSettings(settings)
+func matchModelsDevPrices(catalog map[string]modelsDevProvider, observed []string, settings store.PriceSyncSettings, now time.Time) (modelsDevMatchResult, error) {
+	normalizedSettings, err := store.NormalizePriceSyncSettings(settings)
 	if err != nil {
 		return modelsDevMatchResult{}, err
 	}
@@ -273,7 +275,7 @@ func matchModelsDevPrices(catalog map[string]modelsDevProvider, observed []strin
 	candidates := make(map[string]modelsDevCandidate)
 	for providerKey, provider := range catalog {
 		providerName := firstNonEmpty(provider.ID, provider.Name, provider.Label, providerKey)
-		normalizedProvider := normalizeCatalogName(providerName)
+		normalizedProvider := store.NormalizeCatalogName(providerName)
 		rank, prioritized := priority[normalizedProvider]
 		if !prioritized {
 			rank = len(priority)
@@ -283,7 +285,7 @@ func matchModelsDevPrices(catalog map[string]modelsDevProvider, observed []strin
 				continue
 			}
 			catalogModel := firstNonEmpty(model.ID, modelKey, model.Name)
-			comparison := comparisonModelName(catalogModel, normalizedSettings)
+			comparison := store.ComparisonModelName(catalogModel, normalizedSettings)
 			if comparison == "" {
 				continue
 			}
@@ -309,9 +311,9 @@ func matchModelsDevPrices(catalog map[string]modelsDevProvider, observed []strin
 	}
 	sort.Strings(models)
 
-	result := modelsDevMatchResult{Prices: make(map[string]ModelPrice), Observed: len(models)}
+	result := modelsDevMatchResult{Prices: make(map[string]store.ModelPrice), Observed: len(models)}
 	for _, model := range models {
-		candidate, ok := candidates[comparisonModelName(model, normalizedSettings)]
+		candidate, ok := candidates[store.ComparisonModelName(model, normalizedSettings)]
 		if !ok {
 			result.Unmatched++
 			continue
@@ -319,7 +321,7 @@ func matchModelsDevPrices(catalog map[string]modelsDevProvider, observed []strin
 		result.Prices[model] = candidate.price
 		result.Matched++
 	}
-	normalized, err := normalizeModelPrices(result.Prices)
+	normalized, err := store.NormalizeModelPrices(result.Prices)
 	if err != nil {
 		return modelsDevMatchResult{}, fmt.Errorf("validate synchronized model prices: %w", err)
 	}
@@ -327,14 +329,14 @@ func matchModelsDevPrices(catalog map[string]modelsDevProvider, observed []strin
 	return result, nil
 }
 
-func modelPriceFromModelsDev(catalogModel modelsDevModel, provider, model string, now time.Time) ModelPrice {
+func modelPriceFromModelsDev(catalogModel modelsDevModel, provider, model string, now time.Time) store.ModelPrice {
 	cost := *catalogModel.Cost
-	price := ModelPrice{
+	price := store.ModelPrice{
 		Input:           cost.Input,
 		Output:          cost.Output,
 		CacheRead:       cost.CacheRead,
 		CacheCreation:   cost.CacheCreation,
-		Source:          priceSourceModelsDev,
+		Source:          store.PriceSourceModelsDev,
 		CatalogProvider: provider,
 		CatalogModel:    model,
 		UpdatedAt:       now.UTC(),
@@ -343,7 +345,7 @@ func modelPriceFromModelsDev(catalogModel modelsDevModel, provider, model string
 		if tier.Tier.Type != "context" || tier.Tier.Size == 0 {
 			continue
 		}
-		price.ContextTiers = append(price.ContextTiers, ContextPriceTier{
+		price.ContextTiers = append(price.ContextTiers, store.ContextPriceTier{
 			Threshold:     tier.Tier.Size,
 			Input:         tier.Input,
 			Output:        tier.Output,
@@ -364,7 +366,7 @@ func modelPriceFromModelsDev(catalogModel modelsDevModel, provider, model string
 				continue
 			}
 			if price.ServiceTiers == nil {
-				price.ServiceTiers = make(map[string]ServiceTierPrice)
+				price.ServiceTiers = make(map[string]store.ServiceTierPrice)
 			}
 			if _, exists := price.ServiceTiers[serviceTier]; exists {
 				continue
@@ -375,48 +377,20 @@ func modelPriceFromModelsDev(catalogModel modelsDevModel, provider, model string
 	return price
 }
 
-func serviceTierPriceFromModelsDev(cost modelsDevCost) ServiceTierPrice {
-	price := ServiceTierPrice{
+func serviceTierPriceFromModelsDev(cost modelsDevCost) store.ServiceTierPrice {
+	price := store.ServiceTierPrice{
 		Input: cost.Input, Output: cost.Output, CacheRead: cost.CacheRead, CacheCreation: cost.CacheCreation,
 	}
 	for _, tier := range cost.Tiers {
 		if tier.Tier.Type != "context" || tier.Tier.Size == 0 {
 			continue
 		}
-		price.ContextTiers = append(price.ContextTiers, ContextPriceTier{
+		price.ContextTiers = append(price.ContextTiers, store.ContextPriceTier{
 			Threshold: tier.Tier.Size, Input: tier.Input, Output: tier.Output,
 			CacheRead: tier.CacheRead, CacheCreation: tier.CacheCreation,
 		})
 	}
 	return price
-}
-
-func comparisonModelName(value string, settings PriceSyncSettings) string {
-	value = normalizeCatalogName(value)
-	for _, mapping := range settings.Mappings {
-		if value == mapping.Source {
-			value = mapping.Target
-			break
-		}
-	}
-	for {
-		previous := value
-		for _, suffix := range settings.IgnoredSuffixes {
-			if strings.HasSuffix(value, suffix) {
-				value = strings.TrimSpace(strings.TrimSuffix(value, suffix))
-				break
-			}
-		}
-		if value == previous {
-			return value
-		}
-	}
-}
-
-func normalizeCatalogName(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	parts := strings.Split(value, "/")
-	return strings.TrimSpace(parts[len(parts)-1])
 }
 
 func candidateLess(left, right modelsDevCandidate) bool {

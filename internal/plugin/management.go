@@ -13,6 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/apikey"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/store"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
@@ -46,7 +49,7 @@ type registeredRoutes struct {
 func (r *pluginRuntime) registerManagement(raw []byte) (managementRegistrationResponse, error) {
 	var request pluginapi.ManagementRegistrationRequest
 	if err := json.Unmarshal(raw, &request); err != nil {
-		return managementRegistrationResponse{}, withStatus(400, "decode management registration: %v", err)
+		return managementRegistrationResponse{}, errs.WithStatus(400, "decode management registration: %v", err)
 	}
 	pluginID, err := pluginIDFromResourceBase(request.ResourceBasePath)
 	if err != nil {
@@ -180,7 +183,7 @@ func (r *pluginRuntime) registerManagement(raw []byte) (managementRegistrationRe
 func (r *pluginRuntime) handleManagement(raw []byte) (pluginapi.ManagementResponse, error) {
 	var request pluginapi.ManagementRequest
 	if err := json.Unmarshal(raw, &request); err != nil {
-		return pluginapi.ManagementResponse{}, withStatus(400, "decode management request: %v", err)
+		return pluginapi.ManagementResponse{}, errs.WithStatus(400, "decode management request: %v", err)
 	}
 
 	r.mu.RLock()
@@ -299,34 +302,34 @@ func (r *pluginRuntime) statsResponse(request pluginapi.ManagementRequest) (plug
 	}
 	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, r.store)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	queryRange, err := usageRangeFromQuery(request.Query.Get("range"), request.Query.Get("start"), request.Query.Get("end"), time.Now().UTC())
+	queryRange, err := store.RangeFromQuery(request.Query.Get("range"), request.Query.Get("start"), request.Query.Get("end"), time.Now().UTC())
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	stats, err := r.store.queryStatsByFilter(queryRange, newUsageFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities))
+	stats, err := r.store.QueryStatsByFilter(queryRange, store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities))
 	if err != nil {
-		status := errorHTTPStatus(err)
+		status := errs.HTTPStatus(err)
 		return jsonResponse(status, map[string]any{"error": err.Error()}), nil
 	}
 	_, generations := r.store.APIKeyCryptoState()
 	return r.sensitiveJSONResponse(http.StatusOK, &stats, r.crypto, generations), nil
 }
 
-func (r *pluginRuntime) statsFilter(request pluginapi.ManagementRequest) (usageRange, usageFilter, error) {
-	queryRange, err := usageRangeFromQuery(request.Query.Get("range"), request.Query.Get("start"), request.Query.Get("end"), time.Now().UTC())
+func (r *pluginRuntime) statsFilter(request pluginapi.ManagementRequest) (store.Range, store.Filter, error) {
+	queryRange, err := store.RangeFromQuery(request.Query.Get("range"), request.Query.Get("start"), request.Query.Get("end"), time.Now().UTC())
 	if err != nil {
-		return usageRange{}, usageFilter{}, err
+		return store.Range{}, store.Filter{}, err
 	}
 	if r.store == nil {
-		return usageRange{}, usageFilter{}, withStatus(http.StatusServiceUnavailable, "storage is not initialized")
+		return store.Range{}, store.Filter{}, errs.WithStatus(http.StatusServiceUnavailable, "storage is not initialized")
 	}
 	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, r.store)
 	if err != nil {
-		return usageRange{}, usageFilter{}, err
+		return store.Range{}, store.Filter{}, err
 	}
-	return queryRange, newUsageFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities), nil
+	return queryRange, store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities), nil
 }
 
 func (r *pluginRuntime) initialStatsResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
@@ -334,11 +337,11 @@ func (r *pluginRuntime) initialStatsResponse(request pluginapi.ManagementRequest
 	defer r.mu.RUnlock()
 	queryRange, filter, err := r.statsFilter(request)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	stats, err := r.store.queryInitialStatsByFilter(queryRange, filter)
+	stats, err := r.store.QueryInitialStatsByFilter(queryRange, filter)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	_, generations := r.store.APIKeyCryptoState()
 	return r.sensitiveJSONResponse(http.StatusOK, &stats, r.crypto, generations), nil
@@ -349,11 +352,11 @@ func (r *pluginRuntime) statsTrendResponse(request pluginapi.ManagementRequest) 
 	defer r.mu.RUnlock()
 	queryRange, filter, err := r.statsFilter(request)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	stats, err := r.store.queryStatsTrendByFilter(queryRange, filter)
+	stats, err := r.store.QueryStatsTrendByFilter(queryRange, filter)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	return jsonResponse(http.StatusOK, stats), nil
 }
@@ -363,25 +366,25 @@ func (r *pluginRuntime) groupsStatsResponse(request pluginapi.ManagementRequest)
 	defer r.mu.RUnlock()
 	queryRange, filter, err := r.statsFilter(request)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	filter.Model = normalizeDimension(request.Query.Get("model"))
+	filter.Model = store.NormalizeDimension(request.Query.Get("model"))
 	excludedModels := make(map[string]struct{}, len(request.Query["exclude_model"]))
 	for _, model := range request.Query["exclude_model"] {
-		if model = normalizeDimension(model); model != "" {
+		if model = store.NormalizeDimension(model); model != "" {
 			excludedModels[model] = struct{}{}
 		}
 	}
-	stats, err := r.store.queryGroupsByFilter(queryRange, filter)
+	stats, err := r.store.QueryGroupsByFilter(queryRange, filter)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	if len(excludedModels) > 0 {
 		items := stats.Items[:0]
 		for _, item := range stats.Items {
 			excluded := false
 			for model := range excludedModels {
-				if modelFilterMatches(model, item.Model) {
+				if store.ModelFilterMatches(model, item.Model) {
 					excluded = true
 					break
 				}
@@ -394,14 +397,14 @@ func (r *pluginRuntime) groupsStatsResponse(request pluginapi.ManagementRequest)
 		stats.Total = len(items)
 	}
 	if err := sortGroupStats(stats.Items, request.Query.Get("sort"), request.Query.Get("direction"), r.groupSortValues(queryRange, filter, request.Query.Get("sort"))); err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	offset, err := parseNonNegativeQueryInt(request.Query.Get("offset"), 0, "offset")
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	limit, err := parseNonNegativeQueryInt(request.Query.Get("limit"), defaultRequestPageSize, "limit")
-	if err != nil || limit < 1 || limit > maxDashboardPageSize {
+	limit, err := parseNonNegativeQueryInt(request.Query.Get("limit"), store.DefaultRequestPageSize, "limit")
+	if err != nil || limit < 1 || limit > store.MaxDashboardPageSize {
 		return jsonResponse(http.StatusBadRequest, map[string]any{"error": "limit must be an integer between 1 and 500"}), nil
 	}
 	if offset > stats.Total {
@@ -416,7 +419,7 @@ func (r *pluginRuntime) groupsStatsResponse(request pluginapi.ManagementRequest)
 	return r.sensitiveJSONResponse(http.StatusOK, &stats, r.crypto, generations), nil
 }
 
-func sortGroupStats(items []GroupStats, sortKey, direction string, aux map[string]groupSortAux) error {
+func sortGroupStats(items []store.GroupStats, sortKey, direction string, aux map[string]groupSortAux) error {
 	if sortKey == "" {
 		sortKey = "total_tokens"
 	}
@@ -424,17 +427,17 @@ func sortGroupStats(items []GroupStats, sortKey, direction string, aux map[strin
 		direction = "desc"
 	}
 	if direction != "asc" && direction != "desc" {
-		return withStatus(http.StatusBadRequest, "direction must be asc or desc")
+		return errs.WithStatus(http.StatusBadRequest, "direction must be asc or desc")
 	}
 	numeric := map[string]bool{"requests": true, "failed_requests": true, "input_tokens": true, "output_tokens": true, "reasoning_tokens": true, "cache_read_tokens": true, "cache_creation_tokens": true, "total_tokens": true, "average_latency_ns": true, "average_ttft_ns": true, "estimated_cost": true}
 	text := map[string]bool{"model": true, "provider": true, "api_key": true, "alias": true, "source": true, "executor_type": true, "auth_type": true, "service_tier": true, "reasoning_effort": true, "price_source": true}
 	if !numeric[sortKey] && !text[sortKey] {
-		return withStatus(http.StatusBadRequest, "unsupported group sort %q", sortKey)
+		return errs.WithStatus(http.StatusBadRequest, "unsupported group sort %q", sortKey)
 	}
-	value := func(item GroupStats) string {
+	value := func(item store.GroupStats) string {
 		switch sortKey {
 		case "model":
-			return compactModelName(item.Model)
+			return store.CompactModelName(item.Model)
 		case "provider":
 			return item.Provider
 		case "api_key":
@@ -457,7 +460,7 @@ func sortGroupStats(items []GroupStats, sortKey, direction string, aux map[strin
 			return ""
 		}
 	}
-	number := func(item GroupStats) uint64 {
+	number := func(item store.GroupStats) uint64 {
 		switch sortKey {
 		case "requests":
 			return item.Requests
@@ -491,11 +494,11 @@ func sortGroupStats(items []GroupStats, sortKey, direction string, aux map[strin
 				return left.hasCost
 			}
 			if !left.hasCost {
-				return compareDimensions(items[i].Dimensions, items[j].Dimensions) < 0
+				return store.CompareDimensions(items[i].Dimensions, items[j].Dimensions) < 0
 			}
 			less = left.totalUSD < right.totalUSD
 			if left.totalUSD == right.totalUSD {
-				return compareDimensions(items[i].Dimensions, items[j].Dimensions) < 0
+				return store.CompareDimensions(items[i].Dimensions, items[j].Dimensions) < 0
 			}
 		} else {
 			if numeric[sortKey] {
@@ -504,7 +507,7 @@ func sortGroupStats(items []GroupStats, sortKey, direction string, aux map[strin
 				less = value(items[i]) < value(items[j])
 			}
 			if numeric[sortKey] && number(items[i]) == number(items[j]) || !numeric[sortKey] && value(items[i]) == value(items[j]) {
-				return compareDimensions(items[i].Dimensions, items[j].Dimensions) < 0
+				return store.CompareDimensions(items[i].Dimensions, items[j].Dimensions) < 0
 			}
 		}
 		if direction == "desc" {
@@ -516,7 +519,7 @@ func sortGroupStats(items []GroupStats, sortKey, direction string, aux map[strin
 }
 
 // groupSortAux carries the price-book-derived sort values that do not live in
-// GroupStats: the aggregated cost for the requested range and the current
+// store.GroupStats: the aggregated cost for the requested range and the current
 // price-book source per model.
 type groupSortAux struct {
 	hasCost     bool
@@ -526,14 +529,14 @@ type groupSortAux struct {
 
 // groupSortValues builds the auxiliary sort values for the requested sort key.
 // Failures degrade to an empty map so sorting falls back to the
-// compareDimensions tiebreak instead of failing the whole table.
-func (r *pluginRuntime) groupSortValues(queryRange usageRange, filter usageFilter, sortKey string) map[string]groupSortAux {
+// store.CompareDimensions tiebreak instead of failing the whole table.
+func (r *pluginRuntime) groupSortValues(queryRange store.Range, filter store.Filter, sortKey string) map[string]groupSortAux {
 	aux := make(map[string]groupSortAux)
 	if r.store == nil {
 		return aux
 	}
 	if sortKey == "estimated_cost" {
-		costs, err := r.store.queryCostsByFilter(queryRange, filter)
+		costs, err := r.store.QueryCostsByFilter(queryRange, filter)
 		if err != nil {
 			return aux
 		}
@@ -555,17 +558,17 @@ func (r *pluginRuntime) groupSortValues(queryRange usageRange, filter usageFilte
 }
 
 func (r *pluginRuntime) requestsResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
-	queryRange, err := usageRangeFromQuery(request.Query.Get("range"), request.Query.Get("start"), request.Query.Get("end"), time.Now().UTC())
+	queryRange, err := store.RangeFromQuery(request.Query.Get("range"), request.Query.Get("start"), request.Query.Get("end"), time.Now().UTC())
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	offset, err := parseNonNegativeQueryInt(request.Query.Get("offset"), 0, "offset")
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	limit, err := parseNonNegativeQueryInt(request.Query.Get("limit"), defaultRequestPageSize, "limit")
+	limit, err := parseNonNegativeQueryInt(request.Query.Get("limit"), store.DefaultRequestPageSize, "limit")
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -574,20 +577,20 @@ func (r *pluginRuntime) requestsResponse(request pluginapi.ManagementRequest) (p
 	}
 	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, r.store)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	page, err := r.store.queryRequestPageByFilter(queryRange, offset, limit, request.Query.Get("model"), newUsageFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities), request.Query.Get("result"))
+	page, err := r.store.QueryRequestPageByFilter(queryRange, offset, limit, request.Query.Get("model"), store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities), request.Query.Get("result"))
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	_, generations := r.store.APIKeyCryptoState()
 	return r.sensitiveJSONResponse(http.StatusOK, &page, r.crypto, generations), nil
 }
 
 func (r *pluginRuntime) costsResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
-	queryRange, err := usageRangeFromQuery(request.Query.Get("range"), request.Query.Get("start"), request.Query.Get("end"), time.Now().UTC())
+	queryRange, err := store.RangeFromQuery(request.Query.Get("range"), request.Query.Get("start"), request.Query.Get("end"), time.Now().UTC())
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -596,31 +599,31 @@ func (r *pluginRuntime) costsResponse(request pluginapi.ManagementRequest) (plug
 	}
 	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, r.store)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	costs, err := r.store.queryCostsByFilter(queryRange, newUsageFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities))
+	costs, err := r.store.QueryCostsByFilter(queryRange, store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities))
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	_, generations := r.store.APIKeyCryptoState()
 	return r.sensitiveJSONResponse(http.StatusOK, &costs, r.crypto, generations), nil
 }
 
-func apiKeyIdentitiesFromRequest(request pluginapi.ManagementRequest, store *Store) ([]string, error) {
+func apiKeyIdentitiesFromRequest(request pluginapi.ManagementRequest, store *store.Store) ([]string, error) {
 	refs := nonEmptyQueryValues(request.Query["api_key_ref"])
 	hashes := nonEmptyQueryValues(request.Query["api_key_hash"])
 	if len(refs) == 0 && len(hashes) == 0 {
 		return nil, nil
 	}
 	if len(refs) > 0 && len(hashes) > 0 {
-		return nil, withStatus(http.StatusBadRequest, "api_key_ref and api_key_hash cannot be used together")
+		return nil, errs.WithStatus(http.StatusBadRequest, "api_key_ref and api_key_hash cannot be used together")
 	}
 	if len(refs) > 0 {
 		seen := make(map[string]struct{}, len(refs))
 		identities := make([]string, 0, len(refs))
 		for _, ref := range refs {
-			if _, _, ok := parseAPIKeyRef(ref); !ok {
-				return nil, withStatus(http.StatusBadRequest, "api_key_ref is invalid")
+			if _, _, ok := apikey.ParseRef(ref); !ok {
+				return nil, errs.WithStatus(http.StatusBadRequest, "api_key_ref is invalid")
 			}
 			if _, exists := seen[ref]; exists {
 				continue
@@ -631,14 +634,14 @@ func apiKeyIdentitiesFromRequest(request pluginapi.ManagementRequest, store *Sto
 		return identities, nil
 	}
 	if len(hashes) > 1 {
-		return nil, withStatus(http.StatusBadRequest, "api_key_hash cannot be repeated; use api_key_ref")
+		return nil, errs.WithStatus(http.StatusBadRequest, "api_key_hash cannot be repeated; use api_key_ref")
 	}
 	hash := hashes[0]
-	if !validAPIKeyHash(hash) {
-		return nil, withStatus(http.StatusBadRequest, "api_key_hash must be 32 lowercase hexadecimal characters")
+	if !apikey.ValidHash(hash) {
+		return nil, errs.WithStatus(http.StatusBadRequest, "api_key_hash must be 32 lowercase hexadecimal characters")
 	}
 	if store == nil {
-		return nil, withStatus(http.StatusServiceUnavailable, "storage is not initialized")
+		return nil, errs.WithStatus(http.StatusServiceUnavailable, "storage is not initialized")
 	}
 	resolved, err := store.ResolveAPIKeyHash(hash)
 	if err != nil {
@@ -667,7 +670,7 @@ func (r *pluginRuntime) exchangeRateResponse() (pluginapi.ManagementResponse, er
 	r.mu.Unlock()
 	rate, err := service.latest()
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	return jsonResponse(http.StatusOK, rate), nil
 }
@@ -681,7 +684,7 @@ func (r *pluginRuntime) pricesResponse() (pluginapi.ManagementResponse, error) {
 	}
 	priceBook, err := store.QueryPriceBook()
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	return jsonResponse(http.StatusOK, priceBook), nil
 }
@@ -695,7 +698,7 @@ func (r *pluginRuntime) preferencesResponse(request pluginapi.ManagementRequest)
 	}
 	preferences, err := store.QueryDashboardPreferences()
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	return jsonResponse(http.StatusOK, preferences), nil
 }
@@ -710,12 +713,12 @@ func (r *pluginRuntime) saveDashboardPreferencesResponse(request pluginapi.Manag
 	}
 	preferences, err := dashboardPreferencesFromBody(request.Body)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	return r.persistDashboardPreferences(preferences)
 }
 
-func (r *pluginRuntime) persistDashboardPreferences(preferences DashboardPreferences) (pluginapi.ManagementResponse, error) {
+func (r *pluginRuntime) persistDashboardPreferences(preferences store.DashboardPreferences) (pluginapi.ManagementResponse, error) {
 	r.mu.RLock()
 	store := r.store
 	r.mu.RUnlock()
@@ -724,19 +727,19 @@ func (r *pluginRuntime) persistDashboardPreferences(preferences DashboardPrefere
 	}
 	preferences, err := store.SaveDashboardPreferences(preferences)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	return jsonResponse(http.StatusOK, preferences), nil
 }
 
-func dashboardPreferencesFromBody(raw []byte) (DashboardPreferences, error) {
-	var preferences DashboardPreferences
+func dashboardPreferencesFromBody(raw []byte) (store.DashboardPreferences, error) {
+	var preferences store.DashboardPreferences
 	if err := decodeStrictJSON(raw, &preferences); err != nil {
-		return DashboardPreferences{}, withStatus(http.StatusBadRequest, "invalid dashboard preferences JSON: %v", err)
+		return store.DashboardPreferences{}, errs.WithStatus(http.StatusBadRequest, "invalid dashboard preferences JSON: %v", err)
 	}
-	normalized, err := normalizeDashboardPreferences(preferences)
+	normalized, err := store.NormalizeDashboardPreferences(preferences)
 	if err != nil {
-		return DashboardPreferences{}, withStatus(http.StatusBadRequest, "%v", err)
+		return store.DashboardPreferences{}, errs.WithStatus(http.StatusBadRequest, "%v", err)
 	}
 	return normalized, nil
 }
@@ -750,8 +753,8 @@ func (r *pluginRuntime) savePricesResponse(request pluginapi.ManagementRequest) 
 		return jsonResponse(http.StatusRequestEntityTooLarge, map[string]any{"error": "model prices JSON is too large"}), nil
 	}
 	var input struct {
-		Prices       map[string]ModelPrice `json:"prices"`
-		SyncSettings *PriceSyncSettings    `json:"sync_settings,omitempty"`
+		Prices       map[string]store.ModelPrice `json:"prices"`
+		SyncSettings *store.PriceSyncSettings    `json:"sync_settings,omitempty"`
 	}
 	if err := decodeStrictJSON(request.Body, &input); err != nil || input.Prices == nil {
 		return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid model prices JSON"}), nil
@@ -764,7 +767,7 @@ func (r *pluginRuntime) savePricesResponse(request pluginapi.ManagementRequest) 
 	}
 	priceBook, err := store.SavePriceBook(input.Prices, input.SyncSettings)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	return jsonResponse(http.StatusOK, priceBook), nil
 }
@@ -778,19 +781,19 @@ func (r *pluginRuntime) syncPricesResponse(request pluginapi.ManagementRequest) 
 		return jsonResponse(http.StatusRequestEntityTooLarge, map[string]any{"error": "model price synchronization JSON is too large"}), nil
 	}
 	var input struct {
-		Source       string             `json:"source"`
-		Models       []string           `json:"models"`
-		SyncSettings *PriceSyncSettings `json:"sync_settings,omitempty"`
+		Source       string                   `json:"source"`
+		Models       []string                 `json:"models"`
+		SyncSettings *store.PriceSyncSettings `json:"sync_settings,omitempty"`
 	}
 	if err := decodeStrictJSON(request.Body, &input); err != nil {
 		return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid model price synchronization JSON"}), nil
 	}
-	if input.Source != "" && input.Source != priceSourceModelsDev {
+	if input.Source != "" && input.Source != store.PriceSourceModelsDev {
 		return jsonResponse(http.StatusBadRequest, map[string]any{"error": `source must be "models.dev"`}), nil
 	}
 	priceBook, err := r.syncModelsDev(input.SyncSettings, input.Models)
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	return jsonResponse(http.StatusOK, priceBook), nil
 }
@@ -817,7 +820,7 @@ func parseNonNegativeQueryInt(raw string, fallback int, name string) (int, error
 	}
 	value, err := strconv.Atoi(raw)
 	if err != nil || value < 0 {
-		return 0, withStatus(http.StatusBadRequest, "%s must be a non-negative integer", name)
+		return 0, errs.WithStatus(http.StatusBadRequest, "%s must be a non-negative integer", name)
 	}
 	return value, nil
 }
@@ -831,7 +834,7 @@ func (r *pluginRuntime) backupResponse() (pluginapi.ManagementResponse, error) {
 	}
 	data, err := store.Backup()
 	if err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	filename := "tokens-statistic-" + nowUTC().UTC().Format("20060102-150405") + ".db"
 	return pluginapi.ManagementResponse{
@@ -860,7 +863,7 @@ func (r *pluginRuntime) restoreResponse(request pluginapi.ManagementRequest) (pl
 	if len(request.Body) == 0 {
 		return jsonResponse(http.StatusBadRequest, map[string]any{"error": "backup body must not be empty"}), nil
 	}
-	if len(request.Body) > maxDatabaseBackupBytes {
+	if len(request.Body) > store.MaxDatabaseBackupBytes {
 		return jsonResponse(http.StatusRequestEntityTooLarge, map[string]any{"error": "backup body is too large"}), nil
 	}
 	r.lifecycleMu.Lock()
@@ -872,7 +875,7 @@ func (r *pluginRuntime) restoreResponse(request pluginapi.ManagementRequest) (pl
 		return jsonResponse(http.StatusServiceUnavailable, map[string]any{"error": "storage is not initialized"}), nil
 	}
 	if err := store.RestoreBackup(request.Body); err != nil {
-		return jsonResponse(errorHTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	generation, generations := store.APIKeyCryptoState()
 	if r.store == store {
@@ -922,11 +925,11 @@ func pluginIDFromResourceBase(base string) (string, error) {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	const prefix = "/v0/resource/plugins/"
 	if !strings.HasPrefix(base, prefix) {
-		return "", withStatus(400, "invalid resource base path %q", base)
+		return "", errs.WithStatus(400, "invalid resource base path %q", base)
 	}
 	pluginID := strings.TrimPrefix(base, prefix)
 	if strings.Contains(pluginID, "/") || !pluginIDPattern.MatchString(pluginID) {
-		return "", withStatus(400, "invalid plugin ID in resource base path")
+		return "", errs.WithStatus(400, "invalid plugin ID in resource base path")
 	}
 	return pluginID, nil
 }

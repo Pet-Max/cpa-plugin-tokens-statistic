@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/apikey"
 	"os/exec"
 	"strings"
 	"testing"
@@ -98,7 +99,7 @@ func TestAPIKeyLocaleCatalog(t *testing.T) {
 		"apiKey.labelTooLong", "apiKey.saveFailed", "apiKey.filterMenu", "apiKey.filterSelected", "apiKey.filterHint",
 	}
 	for _, code := range []string{"en", "zh-CN", "zh-TW", "ru"} {
-		data, err := localeFS.ReadFile("locales/" + code + ".json")
+		data, err := localeFS.ReadFile("web/locales/" + code + ".json")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -111,7 +112,7 @@ func TestAPIKeyLocaleCatalog(t *testing.T) {
 				t.Fatalf("locale %s missing %q", code, key)
 			}
 		}
-		if !strings.Contains(catalog["apiKey.defaultSecretWarning"], defaultAPIKeySecret) || !strings.Contains(catalog["apiKey.defaultSecretWarning"], "32") {
+		if !strings.Contains(catalog["apiKey.defaultSecretWarning"], apikey.DefaultSecret) || !strings.Contains(catalog["apiKey.defaultSecretWarning"], "32") {
 			t.Fatalf("locale %s warning does not explain the default and minimum strength", code)
 		}
 	}

@@ -1129,7 +1129,7 @@ func TestDashboardAuthPageAssets(t *testing.T) {
 		}
 	}
 	for _, code := range []string{"en", "zh-CN", "zh-TW", "ru"} {
-		data, err := os.ReadFile(filepath.Join("locales", code+".json"))
+		data, err := os.ReadFile(filepath.Join("web", "locales", code+".json"))
 		if err != nil {
 			t.Fatalf("read locale %s: %v", code, err)
 		}
@@ -1743,7 +1743,7 @@ func TestDashboardLocalesCatalog(t *testing.T) {
 		"result.failedHttp",
 	}
 	for _, code := range []string{"en", "zh-CN", "zh-TW", "ru"} {
-		data, err := localeFS.ReadFile("locales/" + code + ".json")
+		data, err := localeFS.ReadFile("web/locales/" + code + ".json")
 		if err != nil {
 			t.Fatalf("locale %s: %v", code, err)
 		}
@@ -1784,7 +1784,7 @@ func TestDashboardLocalesCatalog(t *testing.T) {
 
 func TestDashboardLocalizesUntitledModelInAllLocales(t *testing.T) {
 	for _, code := range []string{"en", "zh-CN", "zh-TW", "ru"} {
-		data, err := localeFS.ReadFile("locales/" + code + ".json")
+		data, err := localeFS.ReadFile("web/locales/" + code + ".json")
 		if err != nil {
 			t.Fatalf("read locale %s: %v", code, err)
 		}
@@ -1799,8 +1799,9 @@ func TestDashboardLocalizesUntitledModelInAllLocales(t *testing.T) {
 }
 
 func TestDashboardTemplateMarkersAreUniqueAndReplaced(t *testing.T) {
+	// The full-mode markers are flattened into web/dashboard.html itself; they
+	// must survive neither the template nor the generated page.
 	markers := []string{
-		"/*LOCALE_PLACEHOLDER*/",
 		"/*FULL_MODE_APIKEY_STYLES*/",
 		"/*FULL_MODE_APIKEY_FILTER*/",
 		"/*FULL_MODE_APIKEY_MARKUP*/",
@@ -1818,12 +1819,24 @@ func TestDashboardTemplateMarkersAreUniqueAndReplaced(t *testing.T) {
 		"/*FULL_MODE_APIKEY_SCRIPT*/",
 	}
 	for _, marker := range markers {
-		if count := strings.Count(dashboardHTMLTemplate, marker); count != 1 {
-			t.Fatalf("template marker %s appears %d times, want 1", marker, count)
+		if strings.Contains(dashboardTemplate, marker) {
+			t.Fatalf("template still carries flattened marker %s", marker)
 		}
-		if strings.Contains(dashboardHTML, marker) || strings.Contains(dashboardHTML, marker) {
+		if strings.Contains(dashboardHTML, marker) {
 			t.Fatalf("generated dashboard retains marker %s", marker)
 		}
+	}
+	if count := strings.Count(dashboardTemplate, "/*LOCALE_PLACEHOLDER*/"); count != 1 {
+		t.Fatalf("locale placeholder appears %d times in template, want 1", count)
+	}
+	if strings.Contains(dashboardHTML, "/*LOCALE_PLACEHOLDER*/") {
+		t.Fatal("generated dashboard retains the locale placeholder")
+	}
+	if count := strings.Count(dashboardTemplate, "__CARD_LOGO_DATA_URI__"); count != 3 {
+		t.Fatalf("logo placeholder appears %d times in template, want 3", count)
+	}
+	if strings.Contains(dashboardHTML, "__CARD_LOGO_DATA_URI__") {
+		t.Fatal("generated dashboard retains the logo placeholder")
 	}
 }
 func TestDashboardScriptParsesWithNode(t *testing.T) {

@@ -8,12 +8,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
 const responseCompressionLevel = 2
 
-func maybeCompressResponse(request pluginapi.ManagementRequest, response pluginapi.ManagementResponse, config Config) pluginapi.ManagementResponse {
+func maybeCompressResponse(request pluginapi.ManagementRequest, response pluginapi.ManagementResponse, config config.Config) pluginapi.ManagementResponse {
 	if !config.CompressionEnabled || !strings.HasPrefix(request.Path, "/v0/resource/plugins/") && !strings.HasPrefix(request.Path, "/v0/management/plugins/") {
 		return response
 	}

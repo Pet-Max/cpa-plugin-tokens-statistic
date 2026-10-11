@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
 	"io"
 	"math"
 	"mime"
@@ -97,7 +98,7 @@ func newExchangeRateService() *exchangeRateService {
 
 func (s *exchangeRateService) latest() (ExchangeRateResponse, error) {
 	if s == nil {
-		return ExchangeRateResponse{}, withStatus(http.StatusServiceUnavailable, "exchange-rate service is unavailable")
+		return ExchangeRateResponse{}, errs.WithStatus(http.StatusServiceUnavailable, "exchange-rate service is unavailable")
 	}
 
 	s.mu.Lock()
@@ -235,7 +236,7 @@ func (f *exchangeRateFetcher) fetch(ctx context.Context) (exchangeRateProviderRe
 
 func publicExchangeRateError(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		return withStatus(http.StatusGatewayTimeout, "exchange-rate request timed out")
+		return errs.WithStatus(http.StatusGatewayTimeout, "exchange-rate request timed out")
 	}
-	return withStatus(http.StatusBadGateway, "exchange-rate request failed")
+	return errs.WithStatus(http.StatusBadGateway, "exchange-rate request failed")
 }
