@@ -264,7 +264,7 @@ func TestDashboardPreferencesPersistAcrossRestartAndStatsReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if defaults.RequestPageSize != 100 || defaults.DimensionPageSize != 100 || len(defaults.HiddenRequestColumns) != 0 || len(defaults.HiddenDimensionColumns) != 0 || defaults.TimeRangeMode != "custom" || defaults.TokenDisplayMode != "m" {
+	if defaults.RequestPageSize != 100 || defaults.DimensionPageSize != 100 || len(defaults.HiddenRequestColumns) != 0 || len(defaults.HiddenDimensionColumns) != 0 || defaults.TimeRangeMode != "today" || defaults.TokenDisplayMode != "m" {
 		t.Fatalf("default preferences = %+v", defaults)
 	}
 	want := DashboardPreferences{
@@ -323,8 +323,9 @@ func TestDashboardPreferencesValidation(t *testing.T) {
 		},
 		func(value *DashboardPreferences) { value.TimeRangeMode = "yesterday" },
 		func(value *DashboardPreferences) { value.TokenDisplayMode = "billion" },
-		func(value *DashboardPreferences) { value.TimeRangeStart = "2026-08-05" },
+		func(value *DashboardPreferences) { value.TimeRangeMode = "custom"; value.TimeRangeStart = "2026-08-05" },
 		func(value *DashboardPreferences) {
+			value.TimeRangeMode = "custom"
 			value.TimeRangeStart = "2026-08-06"
 			value.TimeRangeEnd = "2026-08-05"
 		},
@@ -339,6 +340,7 @@ func TestDashboardPreferencesValidation(t *testing.T) {
 
 func TestDashboardPreferencesAcceptRFC3339TimeRangesAndKeepLegacyDates(t *testing.T) {
 	base := defaultDashboardPreferences()
+	base.TimeRangeMode = "custom"
 	legacy := cloneDashboardPreferences(base)
 	legacy.TimeRangeStart = "2026-08-08"
 	legacy.TimeRangeEnd = "2026-08-08"

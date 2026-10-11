@@ -101,15 +101,18 @@ try {
   await Promise.all([mobileDataResponse, mobileInitialResponse]);
   await mobilePage.locator('#apiKeyFilterButton').waitFor({ state: 'visible' });
 
-  const mobileRects = await readRects(mobilePage, ['.control-filters', '#rangeButton', '#apiKeyFilter', '#apiKeyFilterButton', '.control-actions']);
+  const mobileRects = await readRects(mobilePage, ['.control-filters', '.control-bottom', '#rangeButton', '#apiKeyFilter', '#apiKeyFilterButton', '.control-actions']);
   const fullWidth = mobileRects['.control-filters'].width;
   if (fullWidth < 430 - 24 - 1) {
     throw new Error(`mobile control filters do not fill the shell width at 430px: ${JSON.stringify(mobileRects['.control-filters'])}`);
   }
-  for (const selector of ['#rangeButton', '#apiKeyFilter', '#apiKeyFilterButton', '.control-actions']) {
-    if (Math.abs(mobileRects[selector].right - mobileRects['.control-filters'].right) > 1) {
-      throw new Error(`${selector} leaves empty space on the right at 430px: ${JSON.stringify({ rect: mobileRects[selector], filters: mobileRects['.control-filters'] })}`);
-    }
+  // Two-row toolbar: row 1 (date/source/model) and row 2 (key left, actions right)
+  // both span the shell, so their right edges must line up.
+  if (Math.abs(mobileRects['.control-bottom'].right - mobileRects['.control-filters'].right) > 1) {
+    throw new Error(`mobile control bottom row leaves empty space on the right at 430px: ${JSON.stringify(mobileRects['.control-bottom'])}`);
+  }
+  if (Math.abs(mobileRects['.control-actions'].right - mobileRects['.control-filters'].right) > 1) {
+    throw new Error(`mobile control actions leave empty space on the right at 430px: ${JSON.stringify(mobileRects['.control-actions'])}`);
   }
   if (mobileErrors.length > 0) {
     throw new Error(`mobile page errors: ${mobileErrors.join('\n')}`);

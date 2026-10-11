@@ -19,6 +19,7 @@ export function defaultFixtures({ model = 'browser-test-model' } = {}) {
       generated_at: '2026-08-23T12:00:00.000Z',
       last_used: '2026-08-23T12:00:00.000Z',
       models: [{ model, provider: 'openai', requests: 2, input_tokens: 10, output_tokens: 20, total_tokens: 30 }],
+      all_models: [model],
       sources: [],
       bucket_seconds: 86400,
     },

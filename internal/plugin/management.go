@@ -308,7 +308,7 @@ func (r *pluginRuntime) statsResponse(request pluginapi.ManagementRequest) (plug
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	stats, err := r.store.QueryStatsByFilter(queryRange, store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities))
+	stats, err := r.store.QueryStatsByFilter(queryRange, scopeModelFilter(request, store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities)))
 	if err != nil {
 		status := errs.HTTPStatus(err)
 		return jsonResponse(status, map[string]any{"error": err.Error()}), nil
@@ -329,7 +329,17 @@ func (r *pluginRuntime) statsFilter(request pluginapi.ManagementRequest) (store.
 	if err != nil {
 		return store.Range{}, store.Filter{}, err
 	}
-	return queryRange, store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities), nil
+	return queryRange, scopeModelFilter(request, store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities)), nil
+}
+
+// scopeModelFilter applies the dashboard-wide model filter (scope_model) on
+// top of the per-surface filters; the requests and groups endpoints keep
+// their own local `model` parameter for table-level narrowing.
+func scopeModelFilter(request pluginapi.ManagementRequest, filter store.Filter) store.Filter {
+	if model := request.Query.Get("scope_model"); model != "" {
+		filter.Model = store.CompactModelName(model)
+	}
+	return filter
 }
 
 func (r *pluginRuntime) initialStatsResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
@@ -579,7 +589,7 @@ func (r *pluginRuntime) requestsResponse(request pluginapi.ManagementRequest) (p
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	page, err := r.store.QueryRequestPageByFilter(queryRange, offset, limit, request.Query.Get("model"), store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities), request.Query.Get("result"))
+	page, err := r.store.QueryRequestPageByFilter(queryRange, offset, limit, request.Query.Get("model"), scopeModelFilter(request, store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities)), request.Query.Get("result"))
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
@@ -601,7 +611,7 @@ func (r *pluginRuntime) costsResponse(request pluginapi.ManagementRequest) (plug
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	costs, err := r.store.QueryCostsByFilter(queryRange, store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities))
+	costs, err := r.store.QueryCostsByFilter(queryRange, scopeModelFilter(request, store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities)))
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}

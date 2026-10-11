@@ -49,21 +49,26 @@ printf 'Built release artifact: %s\n' "$RELEASE_ARTIFACT"
 RELEASE_VERSION=${VERSION#v}
 RELEASE_DIR="$ROOT_DIR/dist/release/$VERSION"
 mkdir -p "$RELEASE_DIR"
-package_zip() { # $1 = zip path, $2 = library path (stored at zip root)
+package_zip() { # $1 = zip path, $2 = library path, $3 = archive root name (store requires <id>-v<version>.so)
+  local arcname=$3
   if command -v zip >/dev/null 2>&1; then
-    zip -j -q "$1" "$2"
+    local stage
+    stage=$(mktemp -d)
+    cp "$2" "$stage/$arcname"
+    zip -j -q "$1" "$stage/$arcname"
+    rm -rf "$stage"
   elif command -v python >/dev/null 2>&1; then
-    python - "$1" "$2" <<'PY'
-import os, sys, zipfile
-zip_path, file_path = sys.argv[1], sys.argv[2]
+    python - "$1" "$2" "$arcname" <<'PY'
+import sys, zipfile
+zip_path, file_path, arcname = sys.argv[1], sys.argv[2], sys.argv[3]
 with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-    z.write(file_path, os.path.basename(file_path))
+    z.write(file_path, arcname)
 PY
   else
     echo "packaging requires zip or python" >&2
     exit 1
   fi
 }
-package_zip "$RELEASE_DIR/${PLUGIN_ID}_${RELEASE_VERSION}_linux_arm64.zip" "$RELEASE_ARTIFACT"
+package_zip "$RELEASE_DIR/${PLUGIN_ID}_${RELEASE_VERSION}_linux_arm64.zip" "$RELEASE_ARTIFACT" "${PLUGIN_ID}-${VERSION}.so"
 ( cd "$RELEASE_DIR" && sha256sum -t -- *.zip > checksums.txt )
 echo "release package: $RELEASE_DIR/${PLUGIN_ID}_${RELEASE_VERSION}_linux_arm64.zip"

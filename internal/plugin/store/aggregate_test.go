@@ -281,6 +281,52 @@ func TestInitialStatsCarriesProviderForCacheAccounting(t *testing.T) {
 	}
 }
 
+func TestInitialStatsAllModelsIgnoreModelFilter(t *testing.T) {
+	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	hour := now.Truncate(time.Hour).Unix()
+	data := map[aggregateKey]Counters{
+		{Hour: hour, Dimensions: Dimensions{Model: "claude-sonnet-4-5", Source: "cli"}}:        {Requests: 2, TotalTokens: 20},
+		{Hour: hour, Dimensions: Dimensions{Model: "gpt-5.2-codex", Source: "web"}}:            {Requests: 3, TotalTokens: 30},
+		{Hour: hour, Dimensions: Dimensions{Model: "gemini-3-pro", Source: "cli"}}:             {Requests: 1, TotalTokens: 10},
+		{Hour: hour + 3600, Dimensions: Dimensions{Model: "claude-sonnet-4-5", Source: "api"}}: {Requests: 1, TotalTokens: 5},
+	}
+	queryRange := Range{Name: "retention"}
+
+	scoped := buildInitialStatsForRange(data, now.Add(-time.Hour), now, queryRange, Filter{Model: "gpt-5.2-codex"}, now, nil)
+	if len(scoped.Models) != 1 || scoped.Models[0].Model != "gpt-5.2-codex" {
+		t.Fatalf("scoped models must stay filtered = %+v", scoped.Models)
+	}
+	wantAll := []string{"claude-sonnet-4-5", "gemini-3-pro", "gpt-5.2-codex"}
+	if len(scoped.AllModels) != len(wantAll) {
+		t.Fatalf("all models under scope = %+v, want %v", scoped.AllModels, wantAll)
+	}
+	for index, want := range wantAll {
+		if scoped.AllModels[index] != want {
+			t.Fatalf("all models[%d] = %q, want %q (must be sorted, model-filter ignored, source honored)", index, scoped.AllModels[index], want)
+		}
+	}
+
+	unscoped := buildInitialStatsForRange(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil)
+	if len(unscoped.AllModels) != len(unscoped.Models) {
+		t.Fatalf("without a model filter all models must match the models list = %+v vs %+v", unscoped.AllModels, unscoped.Models)
+	}
+	for _, row := range unscoped.Models {
+		found := false
+		for _, name := range unscoped.AllModels {
+			found = found || name == row.Model
+		}
+		if !found {
+			t.Fatalf("models row %q missing from all models %v", row.Model, unscoped.AllModels)
+		}
+	}
+
+	full := StatsResponse{AllModels: []string{"claude-sonnet-4-5", "gpt-5.2-codex"}, Groups: []GroupStats{{Dimensions: Dimensions{Model: "gpt-5.2-codex"}, Counters: Counters{Requests: 1}}}}
+	compact := initialStatsFromFull(full, queryRange)
+	if len(compact.AllModels) != 2 || compact.AllModels[0] != "claude-sonnet-4-5" {
+		t.Fatalf("compact all models = %+v", compact.AllModels)
+	}
+}
+
 func TestUsageFilterUnionsRepeatedAPIKeyRefs(t *testing.T) {
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	hour := now.Truncate(time.Hour).Unix()

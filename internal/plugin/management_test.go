@@ -121,7 +121,7 @@ func TestCompactStatsResourcesShapePagingAndMethods(t *testing.T) {
 		t.Fatalf("initial response = %+v", initialResponse)
 	}
 	var initial store.InitialStatsResponse
-	if err := json.Unmarshal(initialResponse.Body, &initial); err != nil || initial.SchemaVersion != 2 || initial.BucketSeconds != 300 || initial.Summary.TotalTokens != 60 || len(initial.Models) != 2 || len(initial.Series) != 1 {
+	if err := json.Unmarshal(initialResponse.Body, &initial); err != nil || initial.SchemaVersion != 2 || initial.BucketSeconds != 300 || initial.Summary.TotalTokens != 60 || len(initial.Models) != 2 || len(initial.Series) != 1 || len(initial.AllModels) != 2 {
 		t.Fatalf("initial payload = %+v, %v", initial, err)
 	}
 	trendResponse := call(http.MethodGet, runtime.routes.statsTrendPath, query)
@@ -242,7 +242,7 @@ func TestManagementStatsAndReset(t *testing.T) {
 	}
 	preferencesRequest, _ := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: runtime.routes.preferencesPath})
 	response, err = runtime.handleManagement(preferencesRequest)
-	if err != nil || response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"request_page_size":100`) || !strings.Contains(string(response.Body), `"hidden_request_columns":[]`) || !strings.Contains(string(response.Body), `"time_range_mode":"custom"`) {
+	if err != nil || response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"request_page_size":100`) || !strings.Contains(string(response.Body), `"hidden_request_columns":[]`) || !strings.Contains(string(response.Body), `"time_range_mode":"today"`) {
 		t.Fatalf("default preferences response: %+v, %v", response, err)
 	}
 	savePreferencesRequest, _ := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodPost, Path: runtime.routes.preferencesPath, Headers: http.Header{"Content-Type": []string{"application/json"}}, Body: []byte(`{"request_page_size":50,"dimension_page_size":200,"hidden_request_columns":["source"],"hidden_dimension_columns":["provider"],"time_range_mode":"last_7_days"}`)})

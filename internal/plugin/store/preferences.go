@@ -53,12 +53,12 @@ func (a *storeActor) saveDashboardPreferences(preferences DashboardPreferences) 
 const (
 	defaultDashboardPageSize = 100
 	MaxDashboardPageSize     = 500
-	defaultTimeRangeMode     = "custom"
+	defaultTimeRangeMode     = "today"
 	defaultTokenDisplayMode  = "m"
 )
 
 var dashboardTimeRangeModes = map[string]struct{}{
-	"custom": {}, "last_5_hours": {}, "last_7_days": {}, "last_30_days": {}, "current_month": {},
+	"custom": {}, "today": {}, "last_5_hours": {}, "last_7_days": {}, "last_30_days": {}, "current_month": {},
 }
 
 var dashboardTokenDisplayModes = map[string]struct{}{
@@ -70,11 +70,14 @@ type DashboardPreferences struct {
 	DimensionPageSize      int      `json:"dimension_page_size"`
 	HiddenRequestColumns   []string `json:"hidden_request_columns"`
 	HiddenDimensionColumns []string `json:"hidden_dimension_columns"`
+	HiddenSections         []string `json:"hidden_sections"`
 	TimeRangeMode          string   `json:"time_range_mode"`
 	TokenDisplayMode       string   `json:"token_display_mode"`
 	TimeRangeStart         string   `json:"time_range_start,omitempty"`
 	TimeRangeEnd           string   `json:"time_range_end,omitempty"`
 }
+
+var dashboardSectionKeys = []string{"metrics", "analysis", "requests", "dimensions"}
 
 var requestColumnKeys = []string{
 	"time", "model", "source", "service_tier", "result", "ttft_ns", "generation_ns", "tps",
@@ -95,6 +98,7 @@ func defaultDashboardPreferences() DashboardPreferences {
 		DimensionPageSize:      defaultDashboardPageSize,
 		HiddenRequestColumns:   []string{},
 		HiddenDimensionColumns: []string{},
+		HiddenSections:         []string{},
 		TimeRangeMode:          defaultTimeRangeMode,
 		TokenDisplayMode:       defaultTokenDisplayMode,
 	}
@@ -115,6 +119,7 @@ func NormalizeDashboardPreferences(input DashboardPreferences) (DashboardPrefere
 	if err != nil {
 		return DashboardPreferences{}, err
 	}
+	hiddenSections := normalizeHiddenSections(input.HiddenSections)
 	mode := input.TimeRangeMode
 	if mode == "" {
 		mode = defaultTimeRangeMode
@@ -148,6 +153,7 @@ func NormalizeDashboardPreferences(input DashboardPreferences) (DashboardPrefere
 		DimensionPageSize:      input.DimensionPageSize,
 		HiddenRequestColumns:   hiddenRequests,
 		HiddenDimensionColumns: hiddenDimensions,
+		HiddenSections:         hiddenSections,
 		TimeRangeMode:          mode,
 		TokenDisplayMode:       tokenDisplayMode,
 		TimeRangeStart:         start,
@@ -187,8 +193,23 @@ func normalizeHiddenColumns(input, allowed []string, field string) ([]string, er
 	return normalized, nil
 }
 
+func normalizeHiddenSections(input []string) []string {
+	hiddenSet := make(map[string]struct{}, len(input))
+	for _, key := range input {
+		hiddenSet[key] = struct{}{}
+	}
+	normalized := make([]string, 0, len(hiddenSet))
+	for _, key := range dashboardSectionKeys {
+		if _, ok := hiddenSet[key]; ok {
+			normalized = append(normalized, key)
+		}
+	}
+	return normalized
+}
+
 func cloneDashboardPreferences(value DashboardPreferences) DashboardPreferences {
 	value.HiddenRequestColumns = append([]string{}, value.HiddenRequestColumns...)
 	value.HiddenDimensionColumns = append([]string{}, value.HiddenDimensionColumns...)
+	value.HiddenSections = append([]string{}, value.HiddenSections...)
 	return value
 }

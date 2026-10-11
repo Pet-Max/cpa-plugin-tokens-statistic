@@ -1364,13 +1364,13 @@ func TestDashboardHeaderKeepsHostClearanceAndControlGroups(t *testing.T) {
 	html := dashboardHTML
 	for _, required := range []string{
 		`.heading{min-width:0;padding:2px clamp(96px,10vw,152px) 0 0}`,
-		`class="control-group control-filters"`,
+		`class="control-row control-filters"`,
 		`class="control-group control-actions"`,
 		`flex-wrap:nowrap`,
 		`.control-actions{flex:0 0 auto;margin-left:auto}`,
 		`button.control{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 12px;font-weight:650;white-space:nowrap}`,
 		`@media(max-width:820px){.heading{padding-right:clamp(72px,12vw,112px)}`,
-		`.control-filters{flex-basis:100%}`,
+		`.control-row{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}`,
 		`.control-actions{margin-left:0}`,
 	} {
 		if !strings.Contains(html, required) {
@@ -1680,7 +1680,6 @@ func TestDashboardLocalesCatalog(t *testing.T) {
 		"requestColumns.button",
 		"requestColumns.title",
 		"requestColumns.showAll",
-		"requestColumns.hide",
 		"pagination.rowsPerPage",
 		"sort.ascending",
 		"sort.descending",

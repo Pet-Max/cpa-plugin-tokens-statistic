@@ -244,6 +244,7 @@ type StatsResponse struct {
 	Series        []SeriesPoint      `json:"series"`
 	ModelSeries   []ModelSeriesPoint `json:"model_series"`
 	Sources       []string           `json:"sources"`
+	AllModels     []string           `json:"all_models"`
 	APIKeys       []APIKeyOption     `json:"api_keys,omitempty"`
 }
 
@@ -260,6 +261,7 @@ type InitialStatsResponse struct {
 	Models        []ModelStats   `json:"models"`
 	Series        []SeriesPoint  `json:"series"`
 	Sources       []string       `json:"sources"`
+	AllModels     []string       `json:"all_models"`
 	APIKeys       []APIKeyOption `json:"api_keys,omitempty"`
 }
 
@@ -355,6 +357,9 @@ func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUse
 	summary := Counters{}
 	sources := make(map[string]struct{})
 	apiKeyRefs := make(map[string]struct{})
+	modelFreeFilter := filter
+	modelFreeFilter.Model = ""
+	allModels := make(map[string]struct{})
 	for key, counters := range data {
 		bucketTime := time.Unix(key.Hour, 0).UTC()
 		if !queryRange.Start.IsZero() && bucketTime.Before(queryRange.Start) {
@@ -366,6 +371,11 @@ func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUse
 		dimensions := SanitizeDimensionsSource(key.Dimensions)
 		if dimensions.Source != "" {
 			sources[dimensions.Source] = struct{}{}
+		}
+		if modelFreeFilter.matches(dimensions) {
+			if model := CompactModelName(dimensions.Model); model != "" {
+				allModels[model] = struct{}{}
+			}
 		}
 		if ref := apikey.Ref(dimensions.APIKeyGeneration, dimensions.APIKeyHash); ref != "" {
 			apiKeyRefs[ref] = struct{}{}
@@ -470,6 +480,7 @@ func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUse
 		Series:        points,
 		ModelSeries:   modelPoints,
 		Sources:       sourceValues,
+		AllModels:     sortedStringSet(allModels),
 		APIKeys:       apiKeys,
 	}
 }
@@ -611,6 +622,7 @@ func initialStatsFromFull(stats StatsResponse, queryRange Range) InitialStatsRes
 		Models:        sortedCompactModels(models),
 		Series:        sortedCompactSeries(series),
 		Sources:       stats.Sources,
+		AllModels:     stats.AllModels,
 		APIKeys:       stats.APIKeys,
 	}
 }
@@ -670,6 +682,9 @@ func buildInitialStatsForRange(data map[aggregateKey]Counters, since, lastUsed t
 	models := make(map[string]compactModelAggregate)
 	sources := make(map[string]struct{})
 	apiKeyRefs := make(map[string]struct{})
+	modelFreeFilter := filter
+	modelFreeFilter.Model = ""
+	allModels := make(map[string]struct{})
 	summary := Counters{}
 	for key, counters := range data {
 		bucketTime := time.Unix(key.Hour, 0).UTC()
@@ -679,6 +694,11 @@ func buildInitialStatsForRange(data map[aggregateKey]Counters, since, lastUsed t
 		dimensions := SanitizeDimensionsSource(key.Dimensions)
 		if dimensions.Source != "" {
 			sources[dimensions.Source] = struct{}{}
+		}
+		if modelFreeFilter.matches(dimensions) {
+			if model := CompactModelName(dimensions.Model); model != "" {
+				allModels[model] = struct{}{}
+			}
 		}
 		if ref := apikey.Ref(dimensions.APIKeyGeneration, dimensions.APIKeyHash); ref != "" {
 			apiKeyRefs[ref] = struct{}{}
@@ -701,7 +721,16 @@ func buildInitialStatsForRange(data map[aggregateKey]Counters, since, lastUsed t
 		sourceValues = append(sourceValues, source)
 	}
 	sort.Strings(sourceValues)
-	return InitialStatsResponse{SchemaVersion: 2, GeneratedAt: now.UTC(), Range: queryRange.Name, RetainedSince: since.UTC(), LastUsed: lastUsed.UTC(), BucketSeconds: bucketSeconds, Summary: summary, Models: sortedCompactModels(models), Series: sortedCompactSeries(series), Sources: sourceValues, APIKeys: sortedStatsAPIKeys(apiKeyRefs, apiKeyCiphertexts)}
+	return InitialStatsResponse{SchemaVersion: 2, GeneratedAt: now.UTC(), Range: queryRange.Name, RetainedSince: since.UTC(), LastUsed: lastUsed.UTC(), BucketSeconds: bucketSeconds, Summary: summary, Models: sortedCompactModels(models), Series: sortedCompactSeries(series), Sources: sourceValues, AllModels: sortedStringSet(allModels), APIKeys: sortedStatsAPIKeys(apiKeyRefs, apiKeyCiphertexts)}
+}
+
+func sortedStringSet(values map[string]struct{}) []string {
+	keys := make([]string, 0, len(values))
+	for value := range values {
+		keys = append(keys, value)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func buildStatsTrendForRange(data map[aggregateKey]Counters, since time.Time, queryRange Range, filter Filter, now time.Time) StatsTrendResponse {
