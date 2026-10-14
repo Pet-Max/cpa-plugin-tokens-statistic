@@ -19,6 +19,7 @@ type Dimensions struct {
 	Provider         string `json:"provider"`
 	ExecutorType     string `json:"executor_type"`
 	Model            string `json:"model"`
+	ResponseModel    string `json:"response_model,omitempty"`
 	Alias            string `json:"alias"`
 	Source           string `json:"source"`
 	APIKey           string `json:"api_key,omitempty"`

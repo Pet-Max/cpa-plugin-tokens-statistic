@@ -264,7 +264,7 @@ func TestDashboardPreferencesPersistAcrossRestartAndStatsReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if defaults.RequestPageSize != 100 || defaults.DimensionPageSize != 100 || len(defaults.HiddenRequestColumns) != 0 || len(defaults.HiddenDimensionColumns) != 0 || defaults.TimeRangeMode != "today" || defaults.TokenDisplayMode != "m" {
+	if defaults.RequestPageSize != 100 || defaults.DimensionPageSize != 100 || len(defaults.HiddenRequestColumns) != 0 || len(defaults.HiddenDimensionColumns) != 0 || defaults.TimeRangeMode != "today" || defaults.TokenDisplayMode != "auto" {
 		t.Fatalf("default preferences = %+v", defaults)
 	}
 	want := DashboardPreferences{
@@ -303,6 +303,51 @@ func TestDashboardPreferencesPersistAcrossRestartAndStatsReset(t *testing.T) {
 	loaded, err = store.QueryDashboardPreferences()
 	if err != nil || loaded.RequestPageSize != 50 || len(loaded.HiddenRequestColumns) != 2 {
 		t.Fatalf("stats reset removed dashboard preferences: %+v, %v", loaded, err)
+	}
+}
+
+func TestDashboardPreferencesUpgradeLegacyTokenDisplayModeOnLoad(t *testing.T) {
+	config := testConfig(t)
+	store, err := Open(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := defaultDashboardPreferences()
+	legacy.TokenDisplayMode = legacyTokenDisplayMode
+	if _, err := store.SaveDashboardPreferences(legacy); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err = Open(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	loaded, err := store.QueryDashboardPreferences()
+	if err != nil || loaded.TokenDisplayMode != "auto" {
+		t.Fatalf("legacy token display mode was not upgraded: %+v, %v", loaded, err)
+	}
+
+	explicit := defaultDashboardPreferences()
+	explicit.TokenDisplayMode = "k"
+	if _, err := store.SaveDashboardPreferences(explicit); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err = Open(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	loaded, err = store.QueryDashboardPreferences()
+	if err != nil || loaded.TokenDisplayMode != "k" {
+		t.Fatalf("explicit token display mode was rewritten on load: %+v, %v", loaded, err)
 	}
 }
 

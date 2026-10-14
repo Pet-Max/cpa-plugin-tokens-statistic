@@ -78,6 +78,7 @@
   "card.cacheCreation": "Создание кэша",
   "card.successRate": "Успешность",
   "unit.full": "Полностью",
+  "unit.auto": "Авто",
   "unit.aria": "Единица отображения токенов: {value}",
   "unit.switch": "Переключить на единицы {value}",
   "unit.switchFull": "Показать полностью",

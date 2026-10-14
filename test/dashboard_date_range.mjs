@@ -205,7 +205,8 @@ try {
     const tokenButton = page.locator('#tokenUnitButton');
     const totalTokens = page.locator('#totalTokens');
     const expected = [
-      ['B', '1.23B', 'full'],
+      ['B', '1.23B', 'auto'],
+      ['A', '1.23B', 'full'],
       ['#', '1,230,000,000', 'k'],
       ['K', '1,230,000K', 'm'],
       ['M', '1,230M', 'B'],
@@ -233,13 +234,13 @@ try {
         tokenButton.click(),
       ]);
       const dimensionText = await page.locator('#groups').textContent();
-      const dimensionExpected = { full: '1,230,000,000', k: '1,230,000K', m: '1,230M', B: '1.23B' }[savedMode];
+      const dimensionExpected = { auto: '1.23B', full: '1,230,000,000', k: '1,230,000K', m: '1,230M', B: '1.23B' }[savedMode];
       if (!dimensionText.includes(dimensionExpected)) {
         throw new Error(`dimension table did not switch to ${dimensionExpected}: ${dimensionText.slice(0, 120)}`);
       }
     }
-    if (JSON.stringify(savedTokenDisplayModes) !== JSON.stringify(['full', 'k', 'm', 'B'])) {
-      throw new Error(`expected saved token display modes full,k,m,B, got ${savedTokenDisplayModes.join(',')}`);
+    if (JSON.stringify(savedTokenDisplayModes) !== JSON.stringify(['auto', 'full', 'k', 'm', 'B'])) {
+      throw new Error(`expected saved token display modes auto,full,k,m,B, got ${savedTokenDisplayModes.join(',')}`);
     }
     if (await tokenButton.textContent() !== 'B' || await totalTokens.textContent() !== '1.23B') {
       throw new Error(`expected token unit cycle to return to B, got ${await tokenButton.textContent()} / ${await totalTokens.textContent()}`);

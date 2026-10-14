@@ -69,6 +69,37 @@ func TestDecodeUsageSDKJSON(t *testing.T) {
 	}
 }
 
+func TestDecodeUsageCapturesResponseModel(t *testing.T) {
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	// The host serializes UsageRecord.ResponseModel (added in the v8 SDK) as
+	// PascalCase JSON; the plugin decodes the raw record, so the v7 SDK the
+	// plugin builds against does not need the field.
+	raw := []byte(`{"Provider":"openai","Model":"gpt-5","ResponseModel":"gpt-5-mini","RequestedAt":"2026-07-14T11:59:00Z","Detail":{"InputTokens":5,"OutputTokens":7,"TotalTokens":12}}`)
+	usage, err := DecodeUsage(raw, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Dimensions.Model != "gpt-5" || usage.Dimensions.ResponseModel != "gpt-5-mini" {
+		t.Fatalf("unexpected model dimensions: %+v", usage.Dimensions)
+	}
+	snake := []byte(`{"model":"gpt-5","response_model":"gpt-5-mini"}`)
+	usage, err = DecodeUsage(snake, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Dimensions.ResponseModel != "gpt-5-mini" {
+		t.Fatalf("snake_case response model = %q", usage.Dimensions.ResponseModel)
+	}
+	missing := []byte(`{"model":"gpt-5"}`)
+	usage, err = DecodeUsage(missing, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Dimensions.ResponseModel != "" {
+		t.Fatalf("absent response model = %q", usage.Dimensions.ResponseModel)
+	}
+}
+
 func TestDecodeUsageKeepsAuthIndexTransient(t *testing.T) {
 	now := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
 	raw := []byte("{\"provider\":\"codex\",\"source\":\"cli\",\"auth_index\":\"stable-auth-index\"}")
