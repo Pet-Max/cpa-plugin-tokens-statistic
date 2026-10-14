@@ -71,6 +71,7 @@ func DecodeUsage(raw []byte, now time.Time) (Usage, error) {
 			Provider:        provider,
 			ExecutorType:    executorType,
 			Model:           NormalizeDimension(firstString(root, "Model", "model")),
+			ResponseModel:   NormalizeDimension(firstString(root, "ResponseModel", "response_model")),
 			Alias:           NormalizeDimension(firstString(root, "Alias", "alias")),
 			Source:          safeUsageSource(firstString(root, "Source", "source"), apiKey, provider, executorType, authType, baseURL),
 			APIKey:          NormalizeDimension(apiKey),

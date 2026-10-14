@@ -19,7 +19,7 @@ func TestDashboardPreferencesAllowCacheHitRateColumn(t *testing.T) {
 }
 
 func TestDashboardPreferencesNormalizeTokenDisplayMode(t *testing.T) {
-	for _, mode := range []string{"full", "k", "m", "B"} {
+	for _, mode := range []string{"full", "auto", "k", "m", "B"} {
 		preferences, err := NormalizeDashboardPreferences(DashboardPreferences{
 			RequestPageSize:   10,
 			DimensionPageSize: 10,
@@ -32,7 +32,7 @@ func TestDashboardPreferencesNormalizeTokenDisplayMode(t *testing.T) {
 	}
 
 	empty := defaultDashboardPreferences()
-	if _, err := NormalizeDashboardPreferences(empty); err != nil || empty.TokenDisplayMode != "m" {
+	if _, err := NormalizeDashboardPreferences(empty); err != nil || empty.TokenDisplayMode != "auto" {
 		t.Fatalf("empty token display mode: preferences=%+v err=%v", empty, err)
 	}
 

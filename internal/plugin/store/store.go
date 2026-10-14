@@ -303,7 +303,7 @@ func (a *storeActor) reload() error {
 			} else if normalized, err := NormalizeDashboardPreferences(stored); err != nil {
 				fmt.Fprintf(os.Stderr, "tokens-statistic: stored dashboard preferences are unsupported, using defaults: %v\n", err)
 			} else {
-				a.dashboardPreferences = normalized
+				a.dashboardPreferences = migrateLegacyTokenDisplayMode(normalized)
 			}
 		}
 		if raw := meta.Get(apiKeyLabelsKey); len(raw) > 0 {

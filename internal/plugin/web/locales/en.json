@@ -78,6 +78,7 @@
   "card.cacheCreation": "Cache creation",
   "card.successRate": "Success rate",
   "unit.full": "Full",
+  "unit.auto": "Auto",
   "unit.aria": "Token display unit: {value}",
   "unit.switch": "Switch to {value} units",
   "unit.switchFull": "Switch to full display",

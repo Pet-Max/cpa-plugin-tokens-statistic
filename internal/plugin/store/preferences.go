@@ -54,7 +54,11 @@ const (
 	defaultDashboardPageSize = 100
 	MaxDashboardPageSize     = 500
 	defaultTimeRangeMode     = "today"
-	defaultTokenDisplayMode  = "m"
+	defaultTokenDisplayMode  = "auto"
+	// legacyTokenDisplayMode was the hardcoded default before the adaptive
+	// "auto" mode existed; stored copies of it are upgraded on load so
+	// existing installs show adaptive units without any manual step.
+	legacyTokenDisplayMode = "m"
 )
 
 var dashboardTimeRangeModes = map[string]struct{}{
@@ -62,7 +66,7 @@ var dashboardTimeRangeModes = map[string]struct{}{
 }
 
 var dashboardTokenDisplayModes = map[string]struct{}{
-	"full": {}, "k": {}, "m": {}, "B": {},
+	"full": {}, "auto": {}, "k": {}, "m": {}, "B": {},
 }
 
 type DashboardPreferences struct {
@@ -214,5 +218,15 @@ func cloneDashboardPreferences(value DashboardPreferences) DashboardPreferences 
 	value.HiddenRequestColumns = append([]string{}, value.HiddenRequestColumns...)
 	value.HiddenDimensionColumns = append([]string{}, value.HiddenDimensionColumns...)
 	value.HiddenSections = append([]string{}, value.HiddenSections...)
+	return value
+}
+
+// migrateLegacyTokenDisplayMode upgrades a stored legacy default token unit to
+// the adaptive default. Load-time only: a preference explicitly saved as the
+// legacy value still round-trips through NormalizeDashboardPreferences.
+func migrateLegacyTokenDisplayMode(value DashboardPreferences) DashboardPreferences {
+	if value.TokenDisplayMode == legacyTokenDisplayMode {
+		value.TokenDisplayMode = defaultTokenDisplayMode
+	}
 	return value
 }

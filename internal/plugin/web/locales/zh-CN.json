@@ -78,6 +78,7 @@
   "card.cacheCreation": "缓存创建",
   "card.successRate": "成功率",
   "unit.full": "完整",
+  "unit.auto": "自适应",
   "unit.aria": "Token 显示单位：{value}",
   "unit.switch": "切换为 {value} 单位",
   "unit.switchFull": "切换为完整显示",
