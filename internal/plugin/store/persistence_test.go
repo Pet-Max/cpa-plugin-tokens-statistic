@@ -317,7 +317,7 @@ func TestDashboardPreferencesValidation(t *testing.T) {
 	for _, mutate := range []func(*DashboardPreferences){
 		func(value *DashboardPreferences) { value.RequestPageSize = 0 },
 		func(value *DashboardPreferences) { value.DimensionPageSize = 501 },
-		func(value *DashboardPreferences) { value.HiddenRequestColumns = []string{"api_key"} },
+		func(value *DashboardPreferences) { value.HiddenRequestColumns = []string{"nonexistent"} },
 		func(value *DashboardPreferences) {
 			value.HiddenDimensionColumns = append([]string(nil), dimensionColumnKeys...)
 		},

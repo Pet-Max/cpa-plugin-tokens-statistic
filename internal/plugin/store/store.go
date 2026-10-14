@@ -299,13 +299,12 @@ func (a *storeActor) reload() error {
 		if raw := meta.Get(dashboardPreferencesKey); len(raw) > 0 {
 			var stored DashboardPreferences
 			if err := json.Unmarshal(raw, &stored); err != nil {
-				return fmt.Errorf("decode dashboard preferences: %w", err)
+				fmt.Fprintf(os.Stderr, "tokens-statistic: stored dashboard preferences are unreadable, using defaults: %v\n", err)
+			} else if normalized, err := NormalizeDashboardPreferences(stored); err != nil {
+				fmt.Fprintf(os.Stderr, "tokens-statistic: stored dashboard preferences are unsupported, using defaults: %v\n", err)
+			} else {
+				a.dashboardPreferences = normalized
 			}
-			normalized, err := NormalizeDashboardPreferences(stored)
-			if err != nil {
-				return fmt.Errorf("validate dashboard preferences: %w", err)
-			}
-			a.dashboardPreferences = normalized
 		}
 		if raw := meta.Get(apiKeyLabelsKey); len(raw) > 0 {
 			var labels map[string]string
