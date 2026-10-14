@@ -395,7 +395,7 @@ func TestDashboardPreferencesManagementValidation(t *testing.T) {
 		"malformed json":     `{`,
 		"unknown field":      `{"request_page_size":100,"dimension_page_size":100,"unknown":"value"}`,
 		"invalid page size":  `{"request_page_size":0,"dimension_page_size":100}`,
-		"invalid column":     `{"request_page_size":100,"dimension_page_size":100,"hidden_request_columns":["api_key"]}`,
+		"invalid column":     `{"request_page_size":100,"dimension_page_size":100,"hidden_request_columns":["nonexistent"]}`,
 		"invalid range mode": `{"request_page_size":100,"dimension_page_size":100,"time_range_mode":"yesterday"}`,
 		"invalid display":    `{"request_page_size":100,"dimension_page_size":100,"token_display_mode":"billion"}`,
 		"incomplete range":   `{"request_page_size":100,"dimension_page_size":100,"time_range_mode":"custom","time_range_start":"2026-08-05"}`,
@@ -405,11 +405,11 @@ func TestDashboardPreferencesManagementValidation(t *testing.T) {
 			t.Fatalf("%s status = %d body=%s", name, response.StatusCode, response.Body)
 		}
 	}
-	valid := []byte(`{"request_page_size":50,"dimension_page_size":200,"hidden_request_columns":["source"],"hidden_dimension_columns":["provider"],"time_range_mode":"last_7_days"}`)
+	valid := []byte(`{"request_page_size":50,"dimension_page_size":200,"hidden_request_columns":["api_key","latency_ns"],"hidden_dimension_columns":["api_key"],"time_range_mode":"last_7_days"}`)
 	if response := request(http.MethodPost, jsonHeaders, valid); response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"request_page_size":50`) {
 		t.Fatalf("valid save status = %d body=%s", response.StatusCode, response.Body)
 	}
-	if response := request(http.MethodGet, nil, nil); response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"hidden_request_columns":["source"]`) {
+	if response := request(http.MethodGet, nil, nil); response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"hidden_request_columns":["api_key","latency_ns"]`) || !strings.Contains(string(response.Body), `"hidden_dimension_columns":["api_key"]`) {
 		t.Fatalf("read back status = %d body=%s", response.StatusCode, response.Body)
 	}
 	if response := request(http.MethodPut, jsonHeaders, valid); response.StatusCode != http.StatusMethodNotAllowed || response.Headers.Get("Allow") != http.MethodGet+", "+http.MethodPost {
