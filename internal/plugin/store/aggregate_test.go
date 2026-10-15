@@ -197,6 +197,29 @@ func TestBuildStatsStableDimensionOrdering(t *testing.T) {
 	}
 }
 
+func TestBuildGroupsKeepsResponseModelOutOfGroupIdentity(t *testing.T) {
+	now := time.Date(2026, 10, 15, 12, 30, 0, 0, time.UTC)
+	hour := now.Truncate(time.Hour).Unix()
+	base := Dimensions{Provider: "p", Model: "gemini-2.5-flash"}
+	data := map[aggregateKey]Counters{
+		{Hour: hour, Dimensions: base}: {Requests: 1, TotalTokens: 10},
+		{Hour: hour, Dimensions: func() Dimensions { d := base; d.ResponseModel = "gemini-2.5-flash-002"; return d }()}: {Requests: 2, TotalTokens: 20},
+		{Hour: hour, Dimensions: func() Dimensions { d := base; d.ResponseModel = "gemini-2.5-flash-001"; return d }()}: {Requests: 3, TotalTokens: 30},
+	}
+
+	page := buildGroupsForRange(data, Range{Name: "retention"}, Filter{}, now, nil)
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("rows differing only by response model must merge into one: %+v", page)
+	}
+	item := page.Items[0]
+	if item.Requests != 6 || item.TotalTokens != 60 {
+		t.Fatalf("merged counters = %+v", item)
+	}
+	if item.ResponseModel != "gemini-2.5-flash-001" {
+		t.Fatalf("representative response model = %q, want smallest non-empty", item.ResponseModel)
+	}
+}
+
 func TestQueryCutoffUsesUTCPartialBoundary(t *testing.T) {
 	now := time.Date(2026, 7, 14, 12, 30, 0, 0, time.FixedZone("offset", 8*60*60))
 	_, cutoff, err := queryCutoff("24h", now)
