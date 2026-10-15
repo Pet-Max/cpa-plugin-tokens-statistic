@@ -34,13 +34,15 @@ type Dimensions struct {
 	FailureStatus    int    `json:"failure_status"`
 }
 
-// groupIdentity strips failure-only fields so rows that differ only by
-// Failed/FailureStatus merge into one dimension row. Failure counts stay
-// visible through Counters.FailedRequests, and per-request failure details
-// remain available on the /requests endpoint.
+// groupIdentity strips display-only fields so rows that differ only by
+// Failed/FailureStatus/ResponseModel merge into one dimension row. Failure
+// counts stay visible through Counters.FailedRequests, per-request failure
+// details and upstream response models remain available on the /requests
+// endpoint, and the groups endpoint keeps a representative response model.
 func groupIdentity(dimensions Dimensions) Dimensions {
 	dimensions.Failed = false
 	dimensions.FailureStatus = 0
+	dimensions.ResponseModel = ""
 	return dimensions
 }
 
@@ -779,6 +781,7 @@ func buildStatsTrendForRange(data map[aggregateKey]Counters, since time.Time, qu
 
 func buildGroupsForRange(data map[aggregateKey]Counters, queryRange Range, filter Filter, now time.Time, apiKeyCiphertexts map[string]string) GroupStatsPage {
 	groups := make(map[Dimensions]Counters)
+	responseModels := make(map[Dimensions]string)
 	for key, counters := range data {
 		bucketTime := time.Unix(key.Hour, 0).UTC()
 		if (!queryRange.Start.IsZero() && bucketTime.Before(queryRange.Start)) || (!queryRange.End.IsZero() && !bucketTime.Before(queryRange.End)) {
@@ -792,12 +795,18 @@ func buildGroupsForRange(data map[aggregateKey]Counters, queryRange Range, filte
 		group := groups[identity]
 		group.add(counters)
 		groups[identity] = group
+		if dimensions.ResponseModel != "" {
+			if current, ok := responseModels[identity]; !ok || current == "" || dimensions.ResponseModel < current {
+				responseModels[identity] = dimensions.ResponseModel
+			}
+		}
 	}
 	items := make([]GroupStats, 0, len(groups))
 	for dimensions, counters := range groups {
 		if ref := apikey.Ref(dimensions.APIKeyGeneration, dimensions.APIKeyHash); ref != "" {
 			dimensions.APIKey = apiKeyCiphertexts[ref]
 		}
+		dimensions.ResponseModel = responseModels[dimensions]
 		items = append(items, GroupStats{Dimensions: dimensions, Counters: counters, AverageLatencyNS: counters.averageLatencyNS(), AverageTTFTNS: counters.averageTTFTNS()})
 	}
 	sort.Slice(items, func(i, j int) bool {
