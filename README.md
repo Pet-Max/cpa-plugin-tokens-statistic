@@ -16,13 +16,17 @@ Tokens Statistic 是一个 [CLIProxyAPI](https://github.com/router-for-me/CLIPro
 
 ## 界面预览
 
-**仪表盘总览**
+**指标卡片**
 
-![仪表盘总览：概览卡片与 Tokens 分析趋势](images/dashboard-overview.png)
+![指标卡片](images/dashboard-cards.png)
 
-| 模型明细 | 请求明细 |
+| Tokens 分析 | 请求明细 |
 |:-:|:-:|
-| ![模型明细](images/dashboard-dimensions.png) | ![请求明细](images/dashboard-requests.png) |
+| ![Tokens 分析](images/dashboard-analysis.png) | ![请求明细](images/dashboard-requests.png) |
+
+**模型明细**
+
+![模型明细](images/dashboard-dimensions.png)
 
 **模型价格与同步**
 
@@ -102,7 +106,7 @@ plugins:
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
   CC="zig cc -target x86_64-linux-gnu" \
   go build -buildmode=c-shared -trimpath -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.1.5" \
+  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.2.1" \
   -o tokens-statistic.so .
 ```
 
@@ -110,7 +114,7 @@ CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
 
 - 原始动态库输出到 `dist/`；
 - 商店规格发布包（`tokens-statistic_<版本>_<平台>.zip` + `checksums.txt`）统一输出到 `dist/release/v<版本>/`，与 CI 发行的 Release 资产同规格；
-- 版本通过 `VERSION` 覆盖，例如 `VERSION=v0.2.0 bash scripts/build-linux-amd64.sh`。
+- 版本通过 `VERSION` 覆盖，例如 `VERSION=v0.2.1 bash scripts/build-linux-amd64.sh`。
 
 测试：
 

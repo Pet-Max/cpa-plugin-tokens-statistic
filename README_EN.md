@@ -12,17 +12,21 @@ Tokens Statistic is a usage-statistics plugin for [CLIProxyAPI](https://github.c
 
 ## Screenshots
 
-**Dashboard overview**
+**Metric cards**
 
-![Dashboard overview: summary cards and the trend chart](images/dashboard-overview.png)
+![Metric cards](images/en/dashboard-cards.png)
 
-| Model details | Request details |
+| Tokens analysis | Request details |
 |:-:|:-:|
-| ![Model details](images/dashboard-dimensions.png) | ![Request details](images/dashboard-requests.png) |
+| ![Tokens analysis](images/en/dashboard-analysis.png) | ![Request details](images/en/dashboard-requests.png) |
+
+**Model details**
+
+![Model details](images/en/dashboard-dimensions.png)
 
 **Model pricing & sync**
 
-![Model pricing and sync](images/dashboard-pricing.png)
+![Model pricing and sync](images/en/dashboard-pricing.png)
 
 ## Features
 
@@ -98,7 +102,7 @@ Or call go build directly (Linux amd64 shown):
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
   CC="zig cc -target x86_64-linux-gnu" \
   go build -buildmode=c-shared -trimpath -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.1.5" \
+  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.2.1" \
   -o tokens-statistic.so .
 ```
 
@@ -106,7 +110,7 @@ Artifacts:
 
 - Raw dynamic libraries land in `dist/`;
 - Store-conformant release packages (`tokens-statistic_<version>_<platform>.zip` + `checksums.txt`) land in `dist/release/v<version>/`, matching the assets CI publishes on releases;
-- Override the version with `VERSION`, e.g. `VERSION=v0.2.0 bash scripts/build-linux-amd64.sh`.
+- Override the version with `VERSION`, e.g. `VERSION=v0.2.1 bash scripts/build-linux-amd64.sh`.
 
 Tests:
 

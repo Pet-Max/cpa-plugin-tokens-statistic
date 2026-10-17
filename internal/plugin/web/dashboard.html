@@ -14,7 +14,7 @@ html[data-theme='dark']{background:#151412;color-scheme:dark}
 'use strict';
 var theme='dark',background='#151412';
 try{if(window.parent!==window){var parentRoot=window.parent.document.documentElement,parentTheme=parentRoot.getAttribute('data-theme'),parentBackground=window.parent.getComputedStyle(parentRoot).getPropertyValue('--bg-secondary').trim();theme=parentTheme==='dark'||parentTheme==='white'?parentTheme:'light';if(parentBackground)background=parentBackground;}else{theme=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'white';background=theme==='dark'?'#151412':'#fff';}}catch(_error){}
-var root=document.documentElement;if(theme==='light')root.removeAttribute('data-theme');else root.setAttribute('data-theme',theme);root.style.backgroundColor=background;root.style.colorScheme=theme==='dark'?'dark':'light';
+var root=document.documentElement;if(theme==='light')root.removeAttribute('data-theme');else root.setAttribute('data-theme',theme);root.style.backgroundColor=background;root.style.colorScheme=theme==='dark'?'dark':'light';try{root.setAttribute('data-i18n-pending','');setTimeout(function(){root.removeAttribute('data-i18n-pending');},1500);}catch(_e){}
 try{if(window.frameElement){window.frameElement.style.backgroundColor=background;if(window.frameElement.parentElement)window.frameElement.parentElement.style.backgroundColor=background;}}catch(_error){}
 })();
 </script>
@@ -116,6 +116,138 @@ button.link:focus-visible{outline:2px solid var(--primary-color);outline-offset:
 @media(max-width:560px){.auth-card{padding:24px 18px 18px}}
 
 </style>
+
+<style id="ui-overrides">
+html[data-i18n-pending] #appView,html[data-i18n-pending] #authView{visibility:hidden}
+/* ===== ui overrides (mobile <=720px; desktop >=721px) ===== */
+.pager-row{display:contents}
+@media (max-width:720px){
+      .request-toolbar .panel-meta{width:auto}
+  .page-status{min-width:0;white-space:nowrap}
+  .pager-row{display:flex;align-items:center;gap:6px;flex:0 0 auto;flex-wrap:wrap}
+  .pager-row button[id$="Prev"]{order:1}
+  .pager-row button[id$="Next"]{order:2}
+  .pager-row .page-size-control{order:3}
+  .pager-row .page-status{order:4}
+}
+@media (max-width:720px){
+  /* --- compact header --- */
+  .shell{padding-top:86px}
+  .top{gap:10px;margin-bottom:12px}
+  h1{font-size:21px}
+  .subtitle{display:none}
+  .control-actions .button-label{display:none}
+  .control-actions .control{padding-left:10px;padding-right:10px}
+  .feedback{margin-bottom:8px;min-height:0}
+  .status{font-size:11px;line-height:1.4}
+
+  /* --- metric cards: full-width hero strips + 2-col compact rows --- */
+  .cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:12px}
+  .card{aspect-ratio:auto;min-height:0;grid-template-rows:none;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px;padding:9px 12px}
+  .card::after{display:none}
+  .card .label{min-height:0;font-size:11px;gap:6px;flex-wrap:wrap}
+  .card-icon{width:20px;height:20px;flex:0 0 20px}
+  .card-icon svg{width:12px;height:12px}
+  .card .value{margin-top:0;min-height:0;font-size:15px;justify-self:end;text-align:right;white-space:nowrap}
+  .card-switch{position:static;top:auto;right:auto;margin-left:4px;min-width:22px;min-height:20px;padding:1px 5px;font-size:10px;border-radius:6px}
+
+  /* hero strips: Total Tokens / Total calls / Success rate / Estimated cost */
+  .cards .card:nth-child(9),.cards .card:nth-child(4),.cards .card:nth-child(6),.cards .card:nth-child(3){grid-column:1/-1;padding:11px 12px;border-left:3px solid var(--primary-color)}
+  .cards .card:nth-child(9) .value,.cards .card:nth-child(4) .value,.cards .card:nth-child(6) .value,.cards .card:nth-child(3) .value{font-size:21px}
+  .cards .card:nth-child(9){order:-13}
+  .cards .card:nth-child(4){order:-12}
+  .cards .card:nth-child(6){order:-11}
+  .cards .card:nth-child(3){order:-10}
+  /* secondary rows ordering: tokens breakdown, quality, performance */
+  .cards .card:nth-child(10){order:-5}
+  .cards .card:nth-child(11){order:-4}
+  .cards .card:nth-child(12){order:-3}
+  .cards .card:nth-child(13){order:-2}
+  .cards .card:nth-child(14){order:-1}
+  .cards .card:nth-child(5){order:0}
+  .cards .card:nth-child(7){order:1}
+  .cards .card:nth-child(8){order:2}
+  .cards .card:nth-child(1){order:3}
+  .cards .card:nth-child(2){order:4}
+
+  /* --- analysis chart legend: one scrollable row --- */
+  .series-key{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;padding-bottom:2px}
+  .series-key::-webkit-scrollbar{display:none}
+  .panel-head{min-height:48px}
+  /* --- panel heads stack vertically on phones --- */
+  .panel-head{flex-direction:column;align-items:stretch;gap:8px}
+  .panel-head>div{min-width:0;width:100%}
+  .panel-title{white-space:normal}
+  .panel-subtitle{display:none}
+  .panel-actions{flex-wrap:wrap;gap:8px}
+  .request-toolbar{flex-wrap:wrap;gap:8px}
+  /* --- kill horizontal overflow: park enhanced native selects at 1px, clip strays --- */
+  select.native-select-source{min-width:0!important;max-width:1px!important;width:1px!important}
+  html,body{overflow-x:clip}
+}
+@media (max-width:380px){
+  .card .label span:last-child{max-width:9.5em;overflow:hidden;text-overflow:ellipsis}
+}
+@media (max-width:720px){
+  /* --- pricing dialog: full-screen sheet on phones, top strip clears the host floating header --- */
+  dialog#pricingDialog{width:100vw;max-width:100vw;height:100dvh;max-height:none;margin:0;border-radius:0;border:none;border-top:72px solid var(--bg-primary)}
+  #pricingDialog .dialog-body{padding:14px 12px 18px}
+  #pricingDialog .dialog-body{padding:14px 12px 18px}
+  /* toolbar: title row, then search + actions on one line */
+  #pricingDialog .pricing-toolbar{gap:8px;margin-bottom:10px}
+  #pricingDialog .pricing-toolbar h2{flex:1 1 100%;font-size:17px;margin:0}
+  #pricingDialog .price-search{flex:1 1 auto;width:auto;min-width:0;min-height:34px}
+  #pricingDialog .pricing-toolbar-actions{flex:0 0 auto}
+  #pricingDialog .pricing-toolbar-actions .control{padding-left:9px;padding-right:9px}
+  /* status tags: single scrollable row */
+  #pricingDialog .pricing-tags{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-bottom:10px;padding-bottom:2px}
+  #pricingDialog .pricing-tags::-webkit-scrollbar{display:none}
+  #pricingDialog .pricing-tags .tag{font-size:10px;padding:2px 7px;flex:0 0 auto}
+  /* API key + load-model row compact */
+  #pricingDialog .model-source-controls{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  #pricingDialog .pricing-key-label{flex:1 1 150px;min-width:0}
+  #pricingDialog .model-source-main{flex:1 1 100%}
+  #pricingDialog .model-source-main .model-source-status{flex:1 1 100%;font-size:10px}
+  /* price table: slimmer, all columns kept */
+  #pricingDialog .price-table{min-width:656px;font-size:11px}
+  #pricingDialog .price-table th{font-size:10px;padding:7px 8px}
+  #pricingDialog .price-table td{padding:7px 8px}
+  #pricingDialog .price-table th.num-col,#pricingDialog .price-table td.num-col{width:66px}
+  #pricingDialog .price-table th.act-col,#pricingDialog .price-table td.act-col{width:96px}
+  #pricingDialog .price-table th.src-col,#pricingDialog .price-table td.src-col{width:76px}
+  #pricingDialog .price-table th.restore-col,#pricingDialog .price-table td.restore-col{width:56px}
+  #pricingDialog .price-table th:first-child{width:auto;min-width:120px}
+  #pricingDialog .price-table-scroll{max-height:46vh}
+  /* sync settings + footer */
+  #pricingDialog .sync-settings{margin-top:12px;gap:9px}
+  #pricingDialog .sync-field textarea{min-height:56px}
+  #pricingDialog .pricing-footnote{font-size:10px}
+  #pricingDialog .dialog-actions{gap:8px}
+}
+/* ===== desktop: panel heads become title / subtitle / controls rows (>=721px) ===== */
+@media (min-width:721px){
+  .panel-head{flex-direction:column;align-items:stretch;gap:9px}
+  .panel-head .panel-title-wrap{min-width:0}
+  .analysis-panel .panel-actions{justify-content:space-between;gap:10px}
+  .analysis-panel .panel-actions .series-key{flex:1 1 auto;min-width:0}
+  .request-toolbar{gap:8px 12px}
+  /* request toolbar: filters left · count+columns middle-front · pager right */
+  .request-panel .request-toolbar{justify-content:flex-start}
+  .request-panel .request-toolbar #requestCount{order:1}
+  .request-panel .request-toolbar .request-column-wrap{order:2}
+  .request-panel .request-toolbar #requestPrev{order:3;margin-left:auto}
+  .request-panel .request-toolbar #requestNext{order:4}
+  .request-panel .request-toolbar .page-size-control{order:5}
+  .request-panel .request-toolbar #requestPageStatus{order:6}
+  /* dimension toolbar: everything packed left in listed order */
+  .dimension-panel .request-toolbar{justify-content:flex-start}
+  .dimension-panel .request-toolbar .request-column-wrap{order:1}
+  .dimension-panel .request-toolbar #dimensionPrev{order:2}
+  .dimension-panel .request-toolbar #dimensionNext{order:3}
+  .dimension-panel .request-toolbar .page-size-control{order:4}
+  .dimension-panel .request-toolbar #dimensionPageStatus{order:5}
+}
+</style>
 </head>
 <body>
 <div id="authView" class="auth-view" hidden><section class="auth-card" aria-label="CPA management auth"><div class="auth-badge"><img src="__CARD_LOGO_DATA_URI__" alt="" width="72" height="72"></div><h1 data-i18n="app.title">Token Usage Analytics</h1><p class="auth-tagline" data-i18n="app.tagline">CLIProxyAPI usage analytics plugin · tokens-statistic</p><hr class="auth-divider"><h2 data-i18n="gate.heading">CPA management authentication required</h2><p id="authMessage" class="auth-message" data-i18n="gate.description">Dashboard data is protected by the CLIProxyAPI management key. Enter the management key to continue.</p><div class="auth-field"><input id="authKeyInput" type="password" autocomplete="off" data-i18n-placeholder="gate.placeholder" placeholder="Management key" aria-label="Management key"><button id="authKeyToggle" type="button" class="eye-button" aria-label="Show key" aria-pressed="false"><svg class="eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div><button id="authSubmit" type="button" class="auth-submit" data-i18n="gate.verify">Verify and load</button><label class="auth-remember"><input id="authRemember" type="checkbox"><span data-i18n="gate.remember">Remember credentials</span></label></section></div>
@@ -136,8 +268,8 @@ button.link:focus-visible{outline:2px solid var(--primary-color);outline-offset:
 <section class="panel chart-panel analysis-panel analysis-section"><div class="panel-head"><div class="panel-title-wrap"><h2 class="panel-title" data-i18n="analysis.title">Tokens Analysis</h2><div id="analysisSubtitle" class="panel-subtitle" data-i18n="analysis.subtitle">Calls, success, cache rate and Token trends for the current filters</div></div><div class="panel-actions"><div class="series-key" role="group" data-i18n-aria="analysis.series.aria"><button type="button" class="series-key-button" data-series="ttft" aria-pressed="false"><i class="series-swatch" style="background:var(--metric-ttft)" aria-hidden="true"></i><span data-i18n="card.ttft">First token</span></button><button type="button" class="series-key-button" data-series="latency" aria-pressed="false"><i class="series-swatch" style="background:var(--metric-latency)" aria-hidden="true"></i><span data-i18n="card.latency">Latency</span></button><button type="button" class="series-key-button" data-series="requests" aria-pressed="true"><i class="series-swatch" style="background:var(--metric-requests)" aria-hidden="true"></i><span data-i18n="card.totalCalls">Total calls</span></button><button type="button" class="series-key-button" data-series="successRate" aria-pressed="true"><i class="series-swatch line-key" style="border-top-color:var(--metric-success)" aria-hidden="true"></i><span data-i18n="card.successRate">Success rate</span></button><button type="button" class="series-key-button" data-series="cacheRate" aria-pressed="true"><i class="series-swatch line-key" style="border-top-color:var(--metric-cache-rate)" aria-hidden="true"></i><span data-i18n="card.cacheRate">Cache rate</span></button><button type="button" class="series-key-button" data-series="totalTokens" aria-pressed="false"><i class="series-swatch" style="background:var(--metric-total)" aria-hidden="true"></i><span data-i18n="card.totalTokens">Total Tokens</span></button><button type="button" class="series-key-button" data-series="input" aria-pressed="false"><i class="series-swatch" style="background:var(--metric-input)" aria-hidden="true"></i><span data-i18n="card.input">Input</span></button><button type="button" class="series-key-button" data-series="output" aria-pressed="false"><i class="series-swatch" style="background:var(--metric-output)" aria-hidden="true"></i><span data-i18n="card.output">Output</span></button><button type="button" class="series-key-button" data-series="cacheRead" aria-pressed="false"><i class="series-swatch" style="background:var(--metric-cache-read)" aria-hidden="true"></i><span data-i18n="card.cacheRead">Cache read</span></button></div><button id="resetModelButton" class="mini-button" type="button" hidden data-i18n="button.resetModel">Show all models</button><div class="zoom-buttons" data-i18n-aria="trend.zoom.aria"><select id="granularity" class="control granularity-select" aria-label="Aggregation"><option value="minute" data-i18n="granularity.minute">By minute</option><option value="hour" selected data-i18n="granularity.hour">By hour</option><option value="day" data-i18n="granularity.day">By day</option><option value="week" data-i18n="granularity.week">By week</option><option value="month" data-i18n="granularity.month">By month</option></select><button id="analysisZoomOutButton" class="mini-button icon-only" type="button" title="Zoom out" data-i18n-title="trend.zoomOut.title" data-i18n-aria="trend.zoomOut.title">−</button><button id="analysisZoomInButton" class="mini-button icon-only" type="button" title="Zoom in" data-i18n-title="trend.zoomIn.title" data-i18n-aria="trend.zoomIn.title">＋</button><button id="analysisResetZoomButton" class="mini-button" type="button" hidden data-i18n="button.resetZoom">Reset zoom</button></div></div></div><div id="analysisWrap" class="chart-wrap"><svg id="analysisChart" viewBox="0 0 900 330" role="img" data-i18n-aria="analysis.chart.aria"><g id="analysisPlot"></g><g id="analysisHitLayer"></g></svg><div id="analysisScrollbar" class="chart-scrollbar" hidden><div class="chart-scrollbar-thumb"></div></div><div class="chart-footer" aria-hidden="true"><div class="zoom-tip" data-i18n="trend.zoomTip">Scroll to zoom · Shift + scroll to pan</div></div></div></section>
 
 
-<section class="panel table-panel request-panel"><div class="panel-head"><div><h2 class="panel-title" data-i18n="table.requests.title">Request details</h2><div id="requestTableSubtitle" class="panel-subtitle">Per-request records, newest first</div></div><div class="request-toolbar"><div class="request-filters"><label class="request-filter"><span data-i18n="requestFilter.model">Model</span><select id="requestModelFilter" class="request-filter-select"></select></label><label class="request-filter"><span data-i18n="requestFilter.source">Source</span><select id="requestSourceFilter" class="request-filter-select"></select></label><label class="request-filter"><span data-i18n="requestFilter.result">Result</span><select id="requestResultFilter" class="request-filter-select"></select></label></div><span id="requestCount" class="panel-meta"></span><label class="page-size-control"><span data-i18n="pagination.rowsPerPage">Rows per page</span><input id="requestPageSize" class="page-size-input" type="number" min="1" max="500" step="1" value="100" inputmode="numeric"></label><div class="request-column-wrap"><button id="requestColumnsButton" class="mini-button" type="button" aria-haspopup="menu" aria-expanded="false" data-i18n="requestColumns.button">Columns</button><div id="requestColumnsMenu" class="request-columns-menu" role="menu" hidden><div class="request-columns-head"><span data-i18n="requestColumns.title">Show or hide columns</span><button id="requestColumnsShowAll" class="mini-button" type="button" data-i18n="requestColumns.showAll">Show all</button></div><div id="requestColumnOptions" class="request-column-options"></div></div></div><button id="requestPrev" class="mini-button" type="button" data-i18n="button.previous">Previous</button><span id="requestPageStatus" class="page-status">—</span><button id="requestNext" class="mini-button" type="button" data-i18n="button.next">Next</button></div></div><div class="table-wrap request-table-wrap"><table class="request-table" data-i18n-aria="requestTable.aria"><thead><tr id="requestHeaders"></tr></thead><tbody id="requestRows"></tbody></table></div></section>
-<section class="panel table-panel dimension-panel"><div class="panel-head"><div><h2 class="panel-title" data-i18n="table.dimensions.title">Model details</h2><div id="tableSubtitle" class="panel-subtitle">Current filtered view</div></div><div class="request-toolbar"><span id="groupCount" class="panel-meta"></span><label class="page-size-control"><span data-i18n="pagination.rowsPerPage">Rows per page</span><input id="dimensionPageSize" class="page-size-input" type="number" min="1" max="500" step="1" value="100" inputmode="numeric"></label><div class="request-column-wrap dimension-column-wrap"><button id="dimensionColumnsButton" class="mini-button" type="button" aria-haspopup="menu" aria-expanded="false" data-i18n="requestColumns.button">Columns</button><div id="dimensionColumnsMenu" class="request-columns-menu" role="menu" hidden><div class="request-columns-head"><span data-i18n="requestColumns.title">Show or hide columns</span><button id="dimensionColumnsShowAll" class="mini-button" type="button" data-i18n="requestColumns.showAll">Show all</button></div><div id="dimensionColumnOptions" class="request-column-options"></div></div></div><button id="dimensionPrev" class="mini-button" type="button" data-i18n="button.previous">Previous</button><span id="dimensionPageStatus" class="page-status">—</span><button id="dimensionNext" class="mini-button" type="button" data-i18n="button.next">Next</button></div></div><div class="table-wrap"><table class="dimension-table"><thead><tr id="dimensionHeaders"></tr></thead><tbody id="groups"></tbody></table></div></section>
+<section class="panel table-panel request-panel"><div class="panel-head"><div><h2 class="panel-title" data-i18n="table.requests.title">Request details</h2><div id="requestTableSubtitle" class="panel-subtitle">Per-request records, newest first</div></div><div class="request-toolbar"><div class="request-filters"><label class="request-filter"><span data-i18n="requestFilter.model">Model</span><select id="requestModelFilter" class="request-filter-select"></select></label><label class="request-filter"><span data-i18n="requestFilter.source">Source</span><select id="requestSourceFilter" class="request-filter-select"></select></label><label class="request-filter"><span data-i18n="requestFilter.result">Result</span><select id="requestResultFilter" class="request-filter-select"></select></label></div><span id="requestCount" class="panel-meta"></span><div class="request-column-wrap"><button id="requestColumnsButton" class="mini-button" type="button" aria-haspopup="menu" aria-expanded="false" data-i18n="requestColumns.button">Columns</button><div id="requestColumnsMenu" class="request-columns-menu" role="menu" hidden><div class="request-columns-head"><span data-i18n="requestColumns.title">Show or hide columns</span><button id="requestColumnsShowAll" class="mini-button" type="button" data-i18n="requestColumns.showAll">Show all</button></div><div id="requestColumnOptions" class="request-column-options"></div></div></div><div class="pager-row"><button id="requestPrev" class="mini-button" type="button" data-i18n="button.previous">Previous</button><label class="page-size-control"><span data-i18n="pagination.rowsPerPage">Rows per page</span><input id="requestPageSize" class="page-size-input" type="number" min="1" max="500" step="1" value="100" inputmode="numeric"></label><span id="requestPageStatus" class="page-status">—</span><button id="requestNext" class="mini-button" type="button" data-i18n="button.next">Next</button></div></div></div><div class="table-wrap request-table-wrap"><table class="request-table" data-i18n-aria="requestTable.aria"><thead><tr id="requestHeaders"></tr></thead><tbody id="requestRows"></tbody></table></div></section>
+<section class="panel table-panel dimension-panel"><div class="panel-head"><div><h2 class="panel-title" data-i18n="table.dimensions.title">Model details</h2><div id="tableSubtitle" class="panel-subtitle">Current filtered view</div></div><div class="request-toolbar"><span id="groupCount" class="panel-meta"></span><div class="request-column-wrap dimension-column-wrap"><button id="dimensionColumnsButton" class="mini-button" type="button" aria-haspopup="menu" aria-expanded="false" data-i18n="requestColumns.button">Columns</button><div id="dimensionColumnsMenu" class="request-columns-menu" role="menu" hidden><div class="request-columns-head"><span data-i18n="requestColumns.title">Show or hide columns</span><button id="dimensionColumnsShowAll" class="mini-button" type="button" data-i18n="requestColumns.showAll">Show all</button></div><div id="dimensionColumnOptions" class="request-column-options"></div></div></div><div class="pager-row"><button id="dimensionPrev" class="mini-button" type="button" data-i18n="button.previous">Previous</button><label class="page-size-control"><span data-i18n="pagination.rowsPerPage">Rows per page</span><input id="dimensionPageSize" class="page-size-input" type="number" min="1" max="500" step="1" value="100" inputmode="numeric"></label><span id="dimensionPageStatus" class="page-status">—</span><button id="dimensionNext" class="mini-button" type="button" data-i18n="button.next">Next</button></div></div></div><div class="table-wrap"><table class="dimension-table"><thead><tr id="dimensionHeaders"></tr></thead><tbody id="groups"></tbody></table></div></section>
 </main></div></div><div id="tooltip" class="chart-tooltip" role="tooltip"></div>
 <dialog id="apiKeyLabelDialog" class="apikey-label-dialog"><form method="dialog"><h2 data-i18n="apiKey.editLabel">Edit API Key label</h2><label><span data-i18n="apiKey.label">Label</span><input id="apiKeyLabelInput" class="key-input" type="text" autocomplete="off" maxlength="120" data-i18n-placeholder="apiKey.labelPlaceholder" placeholder="Optional label"></label><p class="apikey-label-hint" data-i18n="apiKey.labelHint">Leave the label empty to delete it.</p><div id="apiKeyLabelError" class="error" role="alert"></div><div class="dialog-actions"><button id="cancelAPIKeyLabel" class="control" value="cancel" data-i18n="button.cancel">Cancel</button><button id="deleteAPIKeyLabel" class="control danger" type="button" data-i18n="apiKey.deleteLabel">Delete label</button><button id="saveAPIKeyLabel" class="control primary" type="button" data-i18n="apiKey.saveLabel">Save label</button></div></form></dialog>
 <div id="dateRangePopover" class="date-range-popover" role="dialog" aria-modal="false" aria-labelledby="dateRangeTitle" hidden><div class="date-dialog-body"><div class="date-dialog-head"><div class="date-dialog-heading"><h2 id="dateRangeTitle" data-i18n="range.calendarTitle">Select date range</h2><div id="dateSelectionStatus" class="date-selection-status" aria-live="polite"></div></div><div id="quickRanges" class="quick-ranges" role="group" data-i18n-aria="range.quickRanges"><button class="quick-range" type="button" data-range-preset="last_5_hours" data-i18n="range.lastFiveHours">Last 5 hours</button><button class="quick-range" type="button" data-range-preset="last_7_days" data-i18n="range.lastSevenDays">Last 7 days</button><button class="quick-range" type="button" data-range-preset="last_30_days" data-i18n="range.lastThirtyDays">Last 30 days</button><button class="quick-range" type="button" data-range-preset="current_month" data-i18n="range.currentMonth">Current month</button></div></div><div id="calendarPanels" class="calendar-panels"><section id="calendar" class="calendar-panel"></section></div><div class="range-time-fields"><div class="range-time-field"><span id="startTimeLabel" data-i18n="range.startTime">Start time</span><input id="startTime" class="native-time-source" type="time" step="1" tabindex="-1" aria-hidden="true"><button id="startTimeButton" class="time-picker-button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="startTimePicker" aria-labelledby="startTimeLabel startTimeButton">00:00:00</button><div id="startTimePicker" class="time-picker-surface" role="dialog" aria-labelledby="startTimeLabel" hidden><label class="time-picker-part"><span data-i18n="time.hour">Hour</span><input data-time-part="hour" type="number" step="1" inputmode="numeric"></label><label class="time-picker-part"><span data-i18n="time.minute">Minute</span><input data-time-part="minute" type="number" step="1" inputmode="numeric"></label><label class="time-picker-part"><span data-i18n="time.second">Second</span><input data-time-part="second" type="number" step="1" inputmode="numeric"></label></div></div><div class="range-time-field"><span id="endTimeLabel" data-i18n="range.endTime">End time</span><input id="endTime" class="native-time-source" type="time" step="1" tabindex="-1" aria-hidden="true"><button id="endTimeButton" class="time-picker-button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="endTimePicker" aria-labelledby="endTimeLabel endTimeButton">00:00:00</button><div id="endTimePicker" class="time-picker-surface" role="dialog" aria-labelledby="endTimeLabel" hidden><label class="time-picker-part"><span data-i18n="time.hour">Hour</span><input data-time-part="hour" type="number" step="1" inputmode="numeric"></label><label class="time-picker-part"><span data-i18n="time.minute">Minute</span><input data-time-part="minute" type="number" step="1" inputmode="numeric"></label><label class="time-picker-part"><span data-i18n="time.second">Second</span><input data-time-part="second" type="number" step="1" inputmode="numeric"></label></div></div><div class="range-time-hint" data-i18n="range.endExclusive">Start included, end excluded</div></div><div class="date-dialog-actions"><button id="cancelDateRange" class="control" type="button" data-i18n="button.cancel">Cancel</button><button id="resetDateRange" class="control" type="button" data-i18n="range.resetToday">Reset to today</button><button id="confirmDateRange" class="control primary" type="button" disabled data-i18n="range.confirm">Confirm</button></div></div></div>
@@ -153,7 +285,7 @@ function normalizeLocale(value){value=String(value||'').toLowerCase();if(value==
 function readParentLocale(){try{if(window.parent===window)return null;var lang=window.parent.document.documentElement.lang||'';return normalizeLocale(lang)||null;}catch(_error){return null;}}
 function detectLocale(){var parent=readParentLocale();if(parent)return parent;var langs=(navigator.languages&&navigator.languages.length?Array.from(navigator.languages):[navigator.language||'']).filter(Boolean);for(var i=0;i<langs.length;i++){var n=normalizeLocale(langs[i]);if(n)return n;}return 'zh-CN';}
 var locale=detectLocale(),formatterLocale=locale==='zh-CN'?'zh-CN':locale==='zh-TW'?'zh-TW':locale==='ru'?'ru-RU':'en-US';
-document.documentElement.lang=locale;
+document.documentElement.lang=locale;if(locale==='en'){document.documentElement.removeAttribute('data-i18n-pending');}
 function t(key,values){var catalog=locales[locale]||{},s=catalog[key];if(s===undefined){var fb=locales['zh-CN']||{};s=fb[key]!==undefined?fb[key]:key;}if(!values)return s;return s.replace(/\{([^}]+)\}/g,function(_,k){return values[k]!==undefined?String(values[k]):'{'+k+'}';});}
 var dropdownCloseTimers=new WeakMap(),activeDropdown=null,enhancedSelectStates=new WeakMap(),enhancedSelectID=0,reducedMotionQuery=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null,reducedMotion=reducedMotionQuery&&reducedMotionQuery.matches;if(reducedMotionQuery){var syncReducedMotion=function(event){reducedMotion=event.matches;};if(reducedMotionQuery.addEventListener)reducedMotionQuery.addEventListener('change',syncReducedMotion);else if(reducedMotionQuery.addListener)reducedMotionQuery.addListener(syncReducedMotion);}
 function finishDropdownClose(menu,token){if(!menu||menu._dropdownToken!==token||!menu.classList.contains('is-closing'))return;var timer=dropdownCloseTimers.get(menu);if(timer)clearTimeout(timer);dropdownCloseTimers.delete(menu);menu.classList.remove('is-opening','is-open','is-closing');menu.hidden=true;var afterClose=menu._dropdownAfterClose,restoreFocus=menu._dropdownRestoreFocus,button=menu._dropdownButton;menu._dropdownAfterClose=null;menu._dropdownRestoreFocus=false;if(activeDropdown===menu)activeDropdown=null;if(afterClose)afterClose();if(restoreFocus&&button&&button.isConnected)button.focus();}
@@ -485,7 +617,7 @@ function askBackupManagementKey(){if(managementKey)return Promise.resolve(manage
 async function resetStats(){if(!confirm(t('confirm.reset')))return;var typed=prompt(t('confirm.typeReset'));if(typed!=='reset')return;var managementKey=await askManagementKey();if(!managementKey)return;try{await api(resetURL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+managementKey},body:JSON.stringify({confirm:'reset'})});await load();}catch(error){text('error',error.message);}}
 function startTimer(){if(refreshTimer)clearInterval(refreshTimer);refreshTimer=setInterval(function(){backgroundTick=true;load().catch(function(error){text('error',error.message);}).finally(function(){backgroundTick=false;});},15000);}document.addEventListener('pointerdown',function(){backgroundTick=false;},true);document.addEventListener('keydown',function(){backgroundTick=false;},true);
 var costLoading=false,baseRender=render,baseRenderVisuals=renderVisuals;render=function(data,costs){if(!costs&&currentCosts){costLoading=!costLoadError;costs=currentCosts;}else if(costs){costLoading=false;}return baseRender(data,costs);};renderVisuals=function(){renderSourceOptions(currentData&&currentData.sources);renderModelOptions(currentData&&(currentData.all_models||currentData.models));var result=baseRenderVisuals();if(currentCosts){var suffix=costLoading?t('status.costRefreshing'):costLoadError?t('status.costRefreshFailed'):'';}return result;};
-initializeSourceFilter();initializeModelFilter();initializeDisplaySettings();initializeDateRange();initializeTimePickers();initializeThemeSync();initializeChartResize();translateStatic();enhanceDashboardSelects(document);initializePricingSelectEnhancement();initializeDropdownSurface(document.getElementById('exportMenu'));initializeDropdownSurface(document.getElementById('requestColumnsMenu'));initializeDropdownSurface(document.getElementById('dimensionColumnsMenu'));renderRequestColumnControls();updateTokenUnitButton();updateCostCurrencyButton();
+initializeSourceFilter();initializeModelFilter();initializeDisplaySettings();initializeDateRange();initializeTimePickers();initializeThemeSync();initializeChartResize();translateStatic();document.documentElement.removeAttribute('data-i18n-pending');enhanceDashboardSelects(document);initializePricingSelectEnhancement();initializeDropdownSurface(document.getElementById('exportMenu'));initializeDropdownSurface(document.getElementById('requestColumnsMenu'));initializeDropdownSurface(document.getElementById('dimensionColumnsMenu'));renderRequestColumnControls();updateTokenUnitButton();updateCostCurrencyButton();
 document.addEventListener('click',function(event){if(activeDropdown&&activeDropdown!==event.target&&!activeDropdown.contains(event.target)&&activeDropdown._dropdownButton!==event.target&&!activeDropdown._dropdownButton.contains(event.target))closeDropdownSurface(activeDropdown,activeDropdown._dropdownButton,false);});
 document.addEventListener('keydown',function(event){if(event.key==='Escape'&&activeDropdown){event.preventDefault();closeDropdownSurface(activeDropdown,activeDropdown._dropdownButton,true);}});
 function repositionActiveDropdown(){if(!activeDropdown||activeDropdown.hidden)return;var state=activeDropdown._enhancedSelectState;if(state)positionEnhancedSelect(state);else if(typeof positionAPIKeyFilterMenu==='function'&&activeDropdown===document.getElementById('apiKeyFilterMenu'))positionAPIKeyFilterMenu();}
