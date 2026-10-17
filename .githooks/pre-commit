@@ -1,0 +1,20 @@
+#!/bin/sh
+# gofmt gate: staged Go files are auto-formatted (gofmt -w) and re-staged
+# before every commit, so a formatting slip can never reach CI's
+# "Check Go formatting" step. Requires: git config core.hooksPath .githooks
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+staged=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+unformatted=$(printf '%s\n' "$staged" | xargs gofmt -l)
+if [ -z "$unformatted" ]; then
+  exit 0
+fi
+
+printf '%s\n' "$unformatted" | xargs gofmt -w
+printf '%s\n' "$unformatted" | xargs git add
+echo "gofmt: 已自动格式化并重新暂存以上文件"
