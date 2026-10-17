@@ -53,9 +53,9 @@ func (s *Store) QueryStatsTrendByFilter(queryRange Range, filter Filter) (StatsT
 	return result.trend, result.err
 }
 
-func (s *Store) QueryGroupsByFilter(queryRange Range, filter Filter) (GroupStatsPage, error) {
+func (s *Store) QueryGroupsByFilter(queryRange Range, filter Filter, spec GroupSpec) (GroupStatsPage, error) {
 	resp := make(chan queryResult, 1)
-	if err := s.send(queryCommand{queryRange: queryRange, filter: filter, mode: statsQueryGroups, resp: resp}); err != nil {
+	if err := s.send(queryCommand{queryRange: queryRange, filter: filter, spec: spec, mode: statsQueryGroups, resp: resp}); err != nil {
 		return GroupStatsPage{}, err
 	}
 	result := <-resp
@@ -68,7 +68,7 @@ func requiresExactStats(queryRange Range) bool {
 			queryRange.End.Second() != 0 || queryRange.End.Nanosecond() != 0)
 }
 
-func (a *storeActor) queryExactStats(queryRange Range, filter Filter, now time.Time) (StatsResponse, error) {
+func (a *storeActor) queryExactStats(queryRange Range, filter Filter, spec GroupSpec, now time.Time) (StatsResponse, error) {
 	if err := queryRange.validate(); err != nil {
 		return StatsResponse{}, errs.WithStatus(400, "%v", err)
 	}
@@ -115,5 +115,5 @@ func (a *storeActor) queryExactStats(queryRange Range, filter Filter, now time.T
 	if err != nil {
 		return StatsResponse{}, fmt.Errorf("query exact stats: %w", err)
 	}
-	return buildStatsForRangeWithFilter(data, a.since, a.lastUsed, Range{Name: queryRange.Name}, filter, now, a.apiKeyCiphertexts), nil
+	return buildStatsForRangeWithFilter(data, a.since, a.lastUsed, Range{Name: queryRange.Name}, filter, now, a.apiKeyCiphertexts, spec), nil
 }

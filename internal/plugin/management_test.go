@@ -95,9 +95,9 @@ func TestCompactStatsResourcesShapePagingAndMethods(t *testing.T) {
 	}
 	now := nowUTC().Truncate(5 * time.Minute)
 	for _, usage := range []store.Usage{
-		{Dimensions: store.Dimensions{Provider: "openai", Model: "alpha", Source: "cli"}, RequestedAt: now.Add(-4 * time.Minute), Counters: store.Counters{Requests: 2, TotalTokens: 20}},
+		{Dimensions: store.Dimensions{Provider: "openai", Model: "alpha", Source: "cli", ResponseModel: "alpha-002"}, RequestedAt: now.Add(-4 * time.Minute), Counters: store.Counters{Requests: 2, TotalTokens: 20}},
 		{Dimensions: store.Dimensions{Provider: "anthropic", Model: "beta", Source: "cli"}, RequestedAt: now.Add(-3 * time.Minute), Counters: store.Counters{Requests: 1, TotalTokens: 10}},
-		{Dimensions: store.Dimensions{Provider: "openai", Model: "alpha", Source: "web"}, RequestedAt: now.Add(-2 * time.Minute), Counters: store.Counters{Requests: 3, TotalTokens: 30}},
+		{Dimensions: store.Dimensions{Provider: "openai", Model: "alpha", Source: "web", ResponseModel: "alpha"}, RequestedAt: now.Add(-2 * time.Minute), Counters: store.Counters{Requests: 3, TotalTokens: 30}},
 	} {
 		if err := st.Record(usage); err != nil {
 			t.Fatal(err)
@@ -141,6 +141,25 @@ func TestCompactStatsResourcesShapePagingAndMethods(t *testing.T) {
 	if groupsResponse.StatusCode != http.StatusOK || json.Unmarshal(groupsResponse.Body, &groups) != nil || groups.Total != 0 || len(groups.Items) != 0 {
 		t.Fatalf("filtered groups response = %+v, payload=%+v", groupsResponse, groups)
 	}
+	groupQuery.Del("model")
+	groupQuery.Del("exclude_model")
+	groupQuery.Set("limit", "10")
+	groupQuery.Set("group_by", "bogus_field")
+	groupsResponse = call(http.MethodGet, runtime.routes.statsGroupsPath, groupQuery)
+	if groupsResponse.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bogus group_by status = %d body=%s", groupsResponse.StatusCode, groupsResponse.Body)
+	}
+	groupQuery.Set("group_by", "provider")
+	groupsResponse = call(http.MethodGet, runtime.routes.statsGroupsPath, groupQuery)
+	if groupsResponse.StatusCode != http.StatusOK || json.Unmarshal(groupsResponse.Body, &groups) != nil || groups.Total != 2 || len(groups.Items) != 2 || groups.Items[0].Requests != 5 || groups.Items[0].TotalTokens != 50 {
+		t.Fatalf("merged group_by response = %+v, payload=%+v", groupsResponse, groups)
+	}
+	groupQuery.Set("group_by", "provider,response_model")
+	groupsResponse = call(http.MethodGet, runtime.routes.statsGroupsPath, groupQuery)
+	if groupsResponse.StatusCode != http.StatusOK || json.Unmarshal(groupsResponse.Body, &groups) != nil || groups.Total != 3 || len(groups.Items) != 3 {
+		t.Fatalf("split group_by response = %+v, payload=%+v", groupsResponse, groups)
+	}
+	groupQuery.Del("group_by")
 	for _, path := range []string{runtime.routes.statsInitialPath, runtime.routes.statsTrendPath, runtime.routes.statsGroupsPath} {
 		response := call(http.MethodPost, path, nil)
 		if response.StatusCode != http.StatusMethodNotAllowed || response.Headers.Get("Allow") != http.MethodGet {
@@ -405,11 +424,11 @@ func TestDashboardPreferencesManagementValidation(t *testing.T) {
 			t.Fatalf("%s status = %d body=%s", name, response.StatusCode, response.Body)
 		}
 	}
-	valid := []byte(`{"request_page_size":50,"dimension_page_size":200,"hidden_request_columns":["api_key","latency_ns"],"hidden_dimension_columns":["api_key"],"time_range_mode":"last_7_days"}`)
+	valid := []byte(`{"request_page_size":50,"dimension_page_size":200,"hidden_request_columns":["api_key","latency_ns","alias","response_model"],"hidden_dimension_columns":["api_key","response_model"],"time_range_mode":"last_7_days"}`)
 	if response := request(http.MethodPost, jsonHeaders, valid); response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"request_page_size":50`) {
 		t.Fatalf("valid save status = %d body=%s", response.StatusCode, response.Body)
 	}
-	if response := request(http.MethodGet, nil, nil); response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"hidden_request_columns":["api_key","latency_ns"]`) || !strings.Contains(string(response.Body), `"hidden_dimension_columns":["api_key"]`) {
+	if response := request(http.MethodGet, nil, nil); response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"hidden_request_columns":["alias","response_model","api_key","latency_ns"]`) || !strings.Contains(string(response.Body), `"hidden_dimension_columns":["response_model","api_key"]`) {
 		t.Fatalf("read back status = %d body=%s", response.StatusCode, response.Body)
 	}
 	if response := request(http.MethodPut, jsonHeaders, valid); response.StatusCode != http.StatusMethodNotAllowed || response.Headers.Get("Allow") != http.MethodGet+", "+http.MethodPost {

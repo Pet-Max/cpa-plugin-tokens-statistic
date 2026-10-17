@@ -379,13 +379,17 @@ func (r *pluginRuntime) groupsStatsResponse(request pluginapi.ManagementRequest)
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	filter.Model = store.NormalizeDimension(request.Query.Get("model"))
+	spec, err := store.ParseGroupSpec(request.Query["group_by"])
+	if err != nil {
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
+	}
 	excludedModels := make(map[string]struct{}, len(request.Query["exclude_model"]))
 	for _, model := range request.Query["exclude_model"] {
 		if model = store.NormalizeDimension(model); model != "" {
 			excludedModels[model] = struct{}{}
 		}
 	}
-	stats, err := r.store.QueryGroupsByFilter(queryRange, filter)
+	stats, err := r.store.QueryGroupsByFilter(queryRange, filter, spec)
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}

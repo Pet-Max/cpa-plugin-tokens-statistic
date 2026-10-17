@@ -51,7 +51,7 @@ func (s *Store) run(actor *storeActor) {
 						item.resp <- queryResult{err: err}
 						continue
 					}
-					stats, err := actor.queryExactStats(item.queryRange, item.filter, now)
+					stats, err := actor.queryExactStats(item.queryRange, item.filter, item.spec, now)
 					if err != nil {
 						item.resp <- queryResult{err: err}
 						continue
@@ -82,9 +82,9 @@ func (s *Store) run(actor *storeActor) {
 				case statsQueryTrend:
 					item.resp <- queryResult{trend: buildStatsTrendForRange(actor.data, actor.since, item.queryRange, item.filter, now)}
 				case statsQueryGroups:
-					item.resp <- queryResult{groups: buildGroupsForRange(actor.data, item.queryRange, item.filter, now, actor.apiKeyCiphertexts)}
+					item.resp <- queryResult{groups: buildGroupsForRange(actor.data, item.queryRange, item.filter, now, actor.apiKeyCiphertexts, item.spec)}
 				default:
-					stats := buildStatsForRangeWithFilter(actor.data, actor.since, actor.lastUsed, item.queryRange, item.filter, now, actor.apiKeyCiphertexts)
+					stats := buildStatsForRangeWithFilter(actor.data, actor.since, actor.lastUsed, item.queryRange, item.filter, now, actor.apiKeyCiphertexts, allGroupFields())
 					item.resp <- queryResult{stats: stats}
 				}
 			case requestQueryCommand:

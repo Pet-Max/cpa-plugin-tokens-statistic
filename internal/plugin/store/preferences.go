@@ -84,7 +84,7 @@ type DashboardPreferences struct {
 var dashboardSectionKeys = []string{"metrics", "analysis", "requests", "dimensions"}
 
 var requestColumnKeys = []string{
-	"time", "model", "source", "api_key", "service_tier", "result", "ttft_ns", "latency_ns", "tps",
+	"time", "model", "alias", "response_model", "source", "api_key", "service_tier", "result", "ttft_ns", "latency_ns", "tps",
 	"reasoning_effort", "input_tokens", "output_tokens", "reasoning_tokens", "cache_read_tokens",
 	"cache_creation_tokens", "total_tokens", "cache_hit", "cache_hit_rate", "estimated_cost", "price_source",
 	// generation_ns was the pre-0.1.5 key of the latency column; it stays
@@ -93,7 +93,7 @@ var requestColumnKeys = []string{
 }
 
 var dimensionColumnKeys = []string{
-	"model", "provider", "alias", "source", "executor_type", "auth_type", "service_tier",
+	"model", "provider", "alias", "response_model", "source", "executor_type", "auth_type", "service_tier",
 	"reasoning_effort", "api_key", "requests", "failed_requests", "input_tokens", "output_tokens",
 	"reasoning_tokens", "cache_read_tokens", "cache_creation_tokens", "total_tokens",
 	"average_latency_ns", "average_ttft_ns", "estimated_cost", "price_source",

@@ -133,7 +133,7 @@ func TestBuildStatsForRangeSeparatesAndFiltersSources(t *testing.T) {
 		{Hour: hour, Dimensions: Dimensions{Model: "alpha", Source: "Antigravity-user@example.com"}}: {Requests: 1, TotalTokens: 10},
 	}
 
-	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, Range{Name: "retention"}, newUsageFilter("Codex-user@example.com", ""), now, nil)
+	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, Range{Name: "retention"}, newUsageFilter("Codex-user@example.com", ""), now, nil, allGroupFields())
 	if stats.Summary.Requests != 2 || stats.Summary.TotalTokens != 20 || len(stats.Groups) != 1 || stats.Groups[0].Source != "Codex-user@example.com" {
 		t.Fatalf("source-filtered stats = %+v", stats)
 	}
@@ -151,7 +151,7 @@ func TestBuildStatsMergesFailureDimensionsIntoSingleGroup(t *testing.T) {
 	}
 	queryRange := Range{Name: "retention"}
 
-	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil)
+	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil, allGroupFields())
 	if len(stats.Groups) != 1 {
 		t.Fatalf("stats group count = %d, groups = %+v", len(stats.Groups), stats.Groups)
 	}
@@ -161,7 +161,7 @@ func TestBuildStatsMergesFailureDimensionsIntoSingleGroup(t *testing.T) {
 		t.Fatalf("merged stats group = %+v", group)
 	}
 
-	page := buildGroupsForRange(data, queryRange, Filter{}, now, nil)
+	page := buildGroupsForRange(data, queryRange, Filter{}, now, nil, allGroupFields())
 	if page.Total != 1 || len(page.Items) != 1 {
 		t.Fatalf("groups page = %+v", page)
 	}
@@ -197,26 +197,123 @@ func TestBuildStatsStableDimensionOrdering(t *testing.T) {
 	}
 }
 
-func TestBuildGroupsKeepsResponseModelOutOfGroupIdentity(t *testing.T) {
+func TestBuildGroupsPivotResponseModelSpec(t *testing.T) {
 	now := time.Date(2026, 10, 15, 12, 30, 0, 0, time.UTC)
 	hour := now.Truncate(time.Hour).Unix()
 	base := Dimensions{Provider: "p", Model: "gemini-2.5-flash"}
 	data := map[aggregateKey]Counters{
-		{Hour: hour, Dimensions: base}: {Requests: 1, TotalTokens: 10},
-		{Hour: hour, Dimensions: func() Dimensions { d := base; d.ResponseModel = "gemini-2.5-flash-002"; return d }()}: {Requests: 2, TotalTokens: 20},
-		{Hour: hour, Dimensions: func() Dimensions { d := base; d.ResponseModel = "gemini-2.5-flash-001"; return d }()}: {Requests: 3, TotalTokens: 30},
+		{Hour: hour, Dimensions: base}: {Requests: 320, TotalTokens: 4100000},
+		{Hour: hour, Dimensions: func() Dimensions { d := base; d.ResponseModel = "gemini-2.5-flash-001"; return d }()}: {Requests: 38, TotalTokens: 902000},
+		{Hour: hour, Dimensions: func() Dimensions { d := base; d.ResponseModel = "gemini-2.5-flash-002"; return d }()}: {Requests: 412, TotalTokens: 8200000},
+	}
+	queryRange := Range{Name: "retention"}
+
+	page := buildGroupsForRange(data, queryRange, Filter{}, now, nil, allGroupFields())
+	if page.Total != 3 || len(page.Items) != 3 {
+		t.Fatalf("spec-on rows = %d, want 3: %+v", page.Total, page)
+	}
+	var requests, tokens uint64
+	for _, item := range page.Items {
+		requests += item.Requests
+		tokens += item.TotalTokens
+	}
+	if requests != 770 || tokens != 13202000 {
+		t.Fatalf("spec-on sums = %d/%d, want 770/13202000", requests, tokens)
+	}
+	unreported := false
+	for _, item := range page.Items {
+		if item.ResponseModel == "" {
+			unreported = item.Requests == 320 && item.TotalTokens == 4100000
+		}
+	}
+	if !unreported {
+		t.Fatalf("unreported records must surface as their own empty-response_model row: %+v", page.Items)
 	}
 
-	page := buildGroupsForRange(data, Range{Name: "retention"}, Filter{}, now, nil)
+	spec := allGroupFields()
+	spec.responseModel = false
+	page = buildGroupsForRange(data, queryRange, Filter{}, now, nil, spec)
 	if page.Total != 1 || len(page.Items) != 1 {
-		t.Fatalf("rows differing only by response model must merge into one: %+v", page)
+		t.Fatalf("spec-off rows = %d, want 1: %+v", page.Total, page)
 	}
 	item := page.Items[0]
-	if item.Requests != 6 || item.TotalTokens != 60 {
-		t.Fatalf("merged counters = %+v", item)
+	if item.Requests != 770 || item.TotalTokens != 13202000 || item.ResponseModel != "" {
+		t.Fatalf("merged item = %+v", item)
 	}
-	if item.ResponseModel != "gemini-2.5-flash-001" {
-		t.Fatalf("representative response model = %q, want smallest non-empty", item.ResponseModel)
+}
+
+func TestBuildGroupsKeepsUnreportedRecordsSeparate(t *testing.T) {
+	now := time.Date(2026, 10, 15, 12, 30, 0, 0, time.UTC)
+	hour := now.Truncate(time.Hour).Unix()
+	base := Dimensions{Provider: "p", Model: "gpt-4o"}
+	data := map[aggregateKey]Counters{
+		{Hour: hour, Dimensions: base}: {Requests: 70, TotalTokens: 640000},
+		{Hour: hour, Dimensions: func() Dimensions { d := base; d.ResponseModel = "gpt-4o"; return d }()}: {Requests: 150, TotalTokens: 1800000},
+	}
+
+	page := buildGroupsForRange(data, Range{Name: "retention"}, Filter{}, now, nil, allGroupFields())
+	if page.Total != 2 || len(page.Items) != 2 {
+		t.Fatalf("unreported and same-name reported rows must stay separate: %+v", page)
+	}
+	for _, item := range page.Items {
+		if item.ResponseModel == "" {
+			if item.Requests != 70 || item.TotalTokens != 640000 {
+				t.Fatalf("unreported item = %+v", item)
+			}
+		} else if item.ResponseModel != "gpt-4o" || item.Requests != 150 || item.TotalTokens != 1800000 {
+			t.Fatalf("same-name item = %+v", item)
+		}
+	}
+}
+
+func TestBuildGroupsPivotAliasSpec(t *testing.T) {
+	now := time.Date(2026, 10, 15, 12, 30, 0, 0, time.UTC)
+	hour := now.Truncate(time.Hour).Unix()
+	base := Dimensions{Provider: "p", Model: "claude-sonnet-4"}
+	data := map[aggregateKey]Counters{
+		{Hour: hour, Dimensions: base}: {Requests: 60, TotalTokens: 1300000},
+		{Hour: hour, Dimensions: func() Dimensions { d := base; d.Alias = "cheap"; return d }()}: {Requests: 34, TotalTokens: 520000},
+		{Hour: hour, Dimensions: func() Dimensions { d := base; d.Alias = "fast"; return d }()}: {Requests: 80, TotalTokens: 1700000},
+	}
+
+	page := buildGroupsForRange(data, Range{Name: "retention"}, Filter{}, now, nil, allGroupFields())
+	if page.Total != 3 || len(page.Items) != 3 {
+		t.Fatalf("alias rows = %d, want 3: %+v", page.Total, page)
+	}
+	spec := allGroupFields()
+	spec.alias = false
+	page = buildGroupsForRange(data, Range{Name: "retention"}, Filter{}, now, nil, spec)
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("alias-merged rows = %d, want 1: %+v", page.Total, page)
+	}
+	if item := page.Items[0]; item.Requests != 174 || item.Alias != "" {
+		t.Fatalf("merged item = %+v", item)
+	}
+}
+
+func TestParseGroupSpec(t *testing.T) {
+	all := allGroupFields()
+	spec, err := ParseGroupSpec(nil)
+	if err != nil || spec != all {
+		t.Fatalf("empty group_by = %+v, %v; want all fields", spec, err)
+	}
+	spec, err = ParseGroupSpec([]string{" alias , response_model "})
+	if err != nil || spec != (GroupSpec{alias: true, responseModel: true}) {
+		t.Fatalf("two-field group_by = %+v, %v", spec, err)
+	}
+	spec, err = ParseGroupSpec([]string{"model"})
+	if err != nil || spec != (GroupSpec{}) {
+		t.Fatalf("model-only group_by = %+v, %v; want anchor-only (no toggled fields)", spec, err)
+	}
+	spec, err = ParseGroupSpec([]string{"provider", "", "api_key"})
+	if err != nil || spec != (GroupSpec{provider: true, apiKey: true}) {
+		t.Fatalf("multi-value group_by = %+v, %v", spec, err)
+	}
+	if _, err := ParseGroupSpec([]string{"bogus_field"}); err == nil || !strings.Contains(err.Error(), "unsupported group_by field") {
+		t.Fatalf("bogus field error = %v", err)
+	}
+	if _, err := ParseGroupSpec([]string{"alias,bogus_field"}); err == nil || !strings.Contains(err.Error(), "unsupported group_by field") {
+		t.Fatalf("mixed bogus field error = %v", err)
 	}
 }
 
@@ -365,7 +462,7 @@ func TestUsageFilterUnionsRepeatedAPIKeyRefs(t *testing.T) {
 		{Hour: hour, Dimensions: Dimensions{Model: "delta", Source: "cli", APIKeyHash: hashC, APIKeyGeneration: 1}}: {Requests: 7, TotalTokens: 70},
 	}
 
-	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, Range{Name: "retention"}, NewFilterFromIdentities("cli", []string{refA, "", refB, refA}), now, nil)
+	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, Range{Name: "retention"}, NewFilterFromIdentities("cli", []string{refA, "", refB, refA}), now, nil, allGroupFields())
 	if stats.Summary.Requests != 5 || stats.Summary.TotalTokens != 50 || len(stats.Groups) != 2 {
 		t.Fatalf("union-filtered stats = %+v", stats)
 	}
@@ -383,7 +480,7 @@ func TestUsageFilterANDsModelWithAPIKeyRefUnion(t *testing.T) {
 		{Hour: hour, Dimensions: Dimensions{Model: "beta", APIKeyHash: hashB, APIKeyGeneration: 1}}:  {Requests: 3, TotalTokens: 30},
 		{Hour: hour, Dimensions: Dimensions{Model: "alpha", APIKeyHash: hashB, APIKeyGeneration: 1}}: {Requests: 5, TotalTokens: 50},
 	}
-	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, Range{Name: "retention"}, filter, now, nil)
+	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, Range{Name: "retention"}, filter, now, nil, allGroupFields())
 	if stats.Summary.Requests != 7 || stats.Summary.TotalTokens != 70 || len(stats.Groups) != 2 {
 		t.Fatalf("model-and-union stats = %+v", stats)
 	}
@@ -398,7 +495,7 @@ func TestUntitledModelAggregatesStayBackendNeutral(t *testing.T) {
 	}
 	queryRange := Range{Name: "retention"}
 
-	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil)
+	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil, allGroupFields())
 	if len(stats.ModelSeries) != 2 || stats.ModelSeries[0].Model != "" || stats.ModelSeries[1].Model != "named" {
 		t.Fatalf("model series = %+v", stats.ModelSeries)
 	}
@@ -429,7 +526,7 @@ func TestLegacyUntitledModelFilterCompatibility(t *testing.T) {
 		{Hour: hour, Dimensions: Dimensions{Model: "named"}}: {Requests: 1, TotalTokens: 10},
 	}
 	filter := Filter{Model: legacyUntitledModelName}
-	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, Range{Name: "retention"}, filter, now, nil)
+	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, Range{Name: "retention"}, filter, now, nil, allGroupFields())
 	if stats.Summary.Requests != 2 || stats.Summary.TotalTokens != 20 || len(stats.Groups) != 1 || stats.Groups[0].Model != "" {
 		t.Fatalf("legacy unnamed-model filter stats = %+v", stats)
 	}

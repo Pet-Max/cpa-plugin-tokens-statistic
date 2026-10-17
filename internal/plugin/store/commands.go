@@ -23,6 +23,7 @@ const (
 type queryCommand struct {
 	queryRange Range
 	filter     Filter
+	spec       GroupSpec
 	mode       statsQueryMode
 	resp       chan queryResult
 }

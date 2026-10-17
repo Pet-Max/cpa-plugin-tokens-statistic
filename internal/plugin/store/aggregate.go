@@ -34,15 +34,118 @@ type Dimensions struct {
 	FailureStatus    int    `json:"failure_status"`
 }
 
-// groupIdentity strips display-only fields so rows that differ only by
-// Failed/FailureStatus/ResponseModel merge into one dimension row. Failure
-// counts stay visible through Counters.FailedRequests, per-request failure
-// details and upstream response models remain available on the /requests
-// endpoint, and the groups endpoint keeps a representative response model.
-func groupIdentity(dimensions Dimensions) Dimensions {
+// GroupSpec selects which dimension fields participate in the dimension-row
+// group identity. Model is always part of the identity; fields switched off
+// are zeroed so rows that differ only by them merge into one row. This backs
+// the dashboard's pivot semantics: visible dimension columns split rows,
+// hidden ones merge them.
+type GroupSpec struct {
+	alias           bool
+	responseModel   bool
+	provider        bool
+	source          bool
+	executorType    bool
+	authType        bool
+	serviceTier     bool
+	reasoningEffort bool
+	apiKey          bool
+}
+
+// allGroupFields enables every toggleable group field, matching the grouping
+// semantics of a dashboard that shows every dimension column.
+func allGroupFields() GroupSpec {
+	return GroupSpec{alias: true, responseModel: true, provider: true, source: true, executorType: true, authType: true, serviceTier: true, reasoningEffort: true, apiKey: true}
+}
+
+// ParseGroupSpec builds a GroupSpec from the dashboard's group_by query
+// parameter: a comma-separated list of dimension field names. Unknown names
+// are rejected so a stale client cannot silently change grouping semantics.
+// An empty list selects every group field, matching the default dashboard
+// view where every dimension column is visible.
+func ParseGroupSpec(values []string) (GroupSpec, error) {
+	spec := GroupSpec{}
+	seen := false
+	for _, raw := range values {
+		for _, name := range strings.Split(raw, ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			seen = true
+			switch name {
+			case "model":
+				// The anchor column is always part of the identity; the
+				// dashboard sends it to express "group by model only".
+			case "alias":
+				spec.alias = true
+			case "response_model":
+				spec.responseModel = true
+			case "provider":
+				spec.provider = true
+			case "source":
+				spec.source = true
+			case "executor_type":
+				spec.executorType = true
+			case "auth_type":
+				spec.authType = true
+			case "service_tier":
+				spec.serviceTier = true
+			case "reasoning_effort":
+				spec.reasoningEffort = true
+			case "api_key":
+				spec.apiKey = true
+			default:
+				return GroupSpec{}, errs.WithStatus(400, "unsupported group_by field %q", name)
+			}
+		}
+	}
+	if !seen {
+		return allGroupFields(), nil
+	}
+	return spec, nil
+}
+
+// groupIdentity zeroes failure-only fields and any group field switched off
+// by spec so rows that differ only by those fields merge into one dimension
+// row. Failure counts stay visible through Counters.FailedRequests, and
+// per-request failure details and upstream response models remain available
+// on the /requests endpoint. response_model participates as reported:
+// unreported records keep an empty value and surface as their own row, which
+// the dashboard renders as an "—"-marked row until the records age out.
+func groupIdentity(dimensions Dimensions, spec GroupSpec) Dimensions {
 	dimensions.Failed = false
 	dimensions.FailureStatus = 0
-	dimensions.ResponseModel = ""
+	if !spec.responseModel {
+		dimensions.ResponseModel = ""
+	}
+	if !spec.alias {
+		dimensions.Alias = ""
+	}
+	if !spec.provider {
+		dimensions.Provider = ""
+	}
+	if !spec.source {
+		dimensions.Source = ""
+	}
+	if !spec.executorType {
+		dimensions.ExecutorType = ""
+	}
+	if !spec.authType {
+		dimensions.AuthType = ""
+	}
+	if !spec.serviceTier {
+		dimensions.ServiceTier = ""
+	}
+	if !spec.reasoningEffort {
+		dimensions.ReasoningEffort = ""
+	}
+	if !spec.apiKey {
+		dimensions.APIKey = ""
+		dimensions.APIKeyHash = ""
+		dimensions.APIKeyGeneration = 0
+		dimensions.APIKeyRef = ""
+		dimensions.APIKeyStatus = ""
+	}
 	return dimensions
 }
 
@@ -347,10 +450,10 @@ func buildStats(data map[aggregateKey]Counters, since, lastUsed time.Time, reque
 }
 
 func buildStatsForRange(data map[aggregateKey]Counters, since, lastUsed time.Time, queryRange Range, source string, now time.Time) StatsResponse {
-	return buildStatsForRangeWithFilter(data, since, lastUsed, queryRange, newUsageFilter(source, ""), now, nil)
+	return buildStatsForRangeWithFilter(data, since, lastUsed, queryRange, newUsageFilter(source, ""), now, nil, allGroupFields())
 }
 
-func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUsed time.Time, queryRange Range, filter Filter, now time.Time, apiKeyCiphertexts map[string]string) StatsResponse {
+func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUsed time.Time, queryRange Range, filter Filter, now time.Time, apiKeyCiphertexts map[string]string, spec GroupSpec) StatsResponse {
 	groups := make(map[Dimensions]Counters)
 	series := make(map[int64]Counters)
 	modelSeries := make(map[struct {
@@ -386,7 +489,7 @@ func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUse
 		if !filter.matches(dimensions) {
 			continue
 		}
-		identity := groupIdentity(dimensions)
+		identity := groupIdentity(dimensions, spec)
 		group := groups[identity]
 		group.add(counters)
 		groups[identity] = group
@@ -779,9 +882,8 @@ func buildStatsTrendForRange(data map[aggregateKey]Counters, since time.Time, qu
 	return StatsTrendResponse{SchemaVersion: 2, GeneratedAt: now.UTC(), Range: queryRange.Name, BucketSeconds: bucketSeconds, ModelSeries: points}
 }
 
-func buildGroupsForRange(data map[aggregateKey]Counters, queryRange Range, filter Filter, now time.Time, apiKeyCiphertexts map[string]string) GroupStatsPage {
+func buildGroupsForRange(data map[aggregateKey]Counters, queryRange Range, filter Filter, now time.Time, apiKeyCiphertexts map[string]string, spec GroupSpec) GroupStatsPage {
 	groups := make(map[Dimensions]Counters)
-	responseModels := make(map[Dimensions]string)
 	for key, counters := range data {
 		bucketTime := time.Unix(key.Hour, 0).UTC()
 		if (!queryRange.Start.IsZero() && bucketTime.Before(queryRange.Start)) || (!queryRange.End.IsZero() && !bucketTime.Before(queryRange.End)) {
@@ -791,22 +893,16 @@ func buildGroupsForRange(data map[aggregateKey]Counters, queryRange Range, filte
 		if !filter.matches(dimensions) {
 			continue
 		}
-		identity := groupIdentity(dimensions)
+		identity := groupIdentity(dimensions, spec)
 		group := groups[identity]
 		group.add(counters)
 		groups[identity] = group
-		if dimensions.ResponseModel != "" {
-			if current, ok := responseModels[identity]; !ok || current == "" || dimensions.ResponseModel < current {
-				responseModels[identity] = dimensions.ResponseModel
-			}
-		}
 	}
 	items := make([]GroupStats, 0, len(groups))
 	for dimensions, counters := range groups {
 		if ref := apikey.Ref(dimensions.APIKeyGeneration, dimensions.APIKeyHash); ref != "" {
 			dimensions.APIKey = apiKeyCiphertexts[ref]
 		}
-		dimensions.ResponseModel = responseModels[dimensions]
 		items = append(items, GroupStats{Dimensions: dimensions, Counters: counters, AverageLatencyNS: counters.averageLatencyNS(), AverageTTFTNS: counters.averageTTFTNS()})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -880,6 +976,7 @@ func CompareDimensions(left, right Dimensions) int {
 		cmp.Compare(left.Provider, right.Provider),
 		cmp.Compare(left.ExecutorType, right.ExecutorType),
 		cmp.Compare(left.Model, right.Model),
+		cmp.Compare(left.ResponseModel, right.ResponseModel),
 		cmp.Compare(left.Alias, right.Alias),
 		cmp.Compare(left.Source, right.Source),
 		cmp.Compare(left.APIKeyGeneration, right.APIKeyGeneration),

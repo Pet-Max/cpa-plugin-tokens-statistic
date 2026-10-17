@@ -144,7 +144,7 @@ func TestGroupsPageMergesFailedRecordsAcrossStatusCodes(t *testing.T) {
 	}
 
 	regularRange := Range{Name: "24h", Start: now.Add(-time.Hour)}
-	regularGroups, err := store.QueryGroupsByFilter(regularRange, Filter{})
+	regularGroups, err := store.QueryGroupsByFilter(regularRange, Filter{}, allGroupFields())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestGroupsPageMergesFailedRecordsAcrossStatusCodes(t *testing.T) {
 		exactStats.Groups[0].FailureStatus != 0 || exactStats.Groups[0].TotalTokens != 5 {
 		t.Fatalf("exact stats groups = %+v", exactStats.Groups)
 	}
-	exactGroups, err := store.QueryGroupsByFilter(exactRange, Filter{})
+	exactGroups, err := store.QueryGroupsByFilter(exactRange, Filter{}, allGroupFields())
 	if err != nil {
 		t.Fatal(err)
 	}
