@@ -273,7 +273,7 @@ func TestBuildGroupsPivotAliasSpec(t *testing.T) {
 	data := map[aggregateKey]Counters{
 		{Hour: hour, Dimensions: base}: {Requests: 60, TotalTokens: 1300000},
 		{Hour: hour, Dimensions: func() Dimensions { d := base; d.Alias = "cheap"; return d }()}: {Requests: 34, TotalTokens: 520000},
-		{Hour: hour, Dimensions: func() Dimensions { d := base; d.Alias = "fast"; return d }()}: {Requests: 80, TotalTokens: 1700000},
+		{Hour: hour, Dimensions: func() Dimensions { d := base; d.Alias = "fast"; return d }()}:  {Requests: 80, TotalTokens: 1700000},
 	}
 
 	page := buildGroupsForRange(data, Range{Name: "retention"}, Filter{}, now, nil, allGroupFields())
