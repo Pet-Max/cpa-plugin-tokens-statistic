@@ -18,6 +18,7 @@ const (
 	statsQueryInitial
 	statsQueryTrend
 	statsQueryGroups
+	statsQueryHealth
 )
 
 type queryCommand struct {
@@ -25,6 +26,7 @@ type queryCommand struct {
 	filter     Filter
 	spec       GroupSpec
 	mode       statsQueryMode
+	tzMinutes  int
 	resp       chan queryResult
 }
 
@@ -33,6 +35,7 @@ type queryResult struct {
 	initial InitialStatsResponse
 	trend   StatsTrendResponse
 	groups  GroupStatsPage
+	health  HealthResponse
 	err     error
 }
 

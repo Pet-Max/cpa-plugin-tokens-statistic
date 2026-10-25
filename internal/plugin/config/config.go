@@ -17,6 +17,8 @@ const (
 	defaultCompressionEnabled  = true
 	defaultCompressionMinBytes = 1024
 	maxCompressionMinBytes     = 16 << 20
+	defaultHealthWarn          = 95
+	defaultHealthCrit          = 80
 )
 
 type Config struct {
@@ -28,15 +30,24 @@ type Config struct {
 	APIKeySecret        string
 	CompressionEnabled  bool
 	CompressionMinBytes int
+	HealthWarn          int
+	HealthCrit          int
 }
 
 // configYAML is the small user-facing surface: db, retention, flush and secret.
 // Compression knobs and the batch size stay internal.
 type configYAML struct {
-	DataPath     string  `yaml:"db"`
-	Retention    *int    `yaml:"retention"`
-	Flush        string  `yaml:"flush"`
-	APIKeySecret *string `yaml:"secret"`
+	DataPath     string      `yaml:"db"`
+	Retention    *int        `yaml:"retention"`
+	Flush        string      `yaml:"flush"`
+	APIKeySecret *string     `yaml:"secret"`
+	Health       *healthYAML `yaml:"health"`
+}
+
+// healthYAML holds the success-rate thresholds of the dashboard health panel.
+type healthYAML struct {
+	Warn *int `yaml:"warn"`
+	Crit *int `yaml:"crit"`
 }
 
 func defaultConfig() Config {
@@ -49,6 +60,8 @@ func defaultConfig() Config {
 		APIKeySecret:        apikey.DefaultSecret,
 		CompressionEnabled:  defaultCompressionEnabled,
 		CompressionMinBytes: defaultCompressionMinBytes,
+		HealthWarn:          defaultHealthWarn,
+		HealthCrit:          defaultHealthCrit,
 	}
 }
 
@@ -79,6 +92,14 @@ func Parse(raw []byte) (Config, error) {
 	if input.APIKeySecret != nil {
 		cfg.APIKeySecret = *input.APIKeySecret
 	}
+	if input.Health != nil {
+		if input.Health.Warn != nil {
+			cfg.HealthWarn = *input.Health.Warn
+		}
+		if input.Health.Crit != nil {
+			cfg.HealthCrit = *input.Health.Crit
+		}
+	}
 	return normalizeConfig(cfg)
 }
 
@@ -100,6 +121,12 @@ func normalizeConfig(cfg Config) (Config, error) {
 	}
 	if cfg.CompressionMinBytes < 0 || cfg.CompressionMinBytes > maxCompressionMinBytes {
 		return Config{}, fmt.Errorf("compression threshold must be between 0 and %d", maxCompressionMinBytes)
+	}
+	if cfg.HealthWarn < 0 || cfg.HealthWarn > 100 || cfg.HealthCrit < 0 || cfg.HealthCrit > 100 {
+		return Config{}, fmt.Errorf("health thresholds must be between 0 and 100")
+	}
+	if cfg.HealthWarn <= cfg.HealthCrit {
+		return Config{}, fmt.Errorf("health warn must be greater than health crit")
 	}
 	absolute, err := filepath.Abs(filepath.Clean(cfg.DataPath))
 	if err != nil {

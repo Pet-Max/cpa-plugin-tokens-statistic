@@ -43,6 +43,7 @@ func TestManagementRegistrationUsesDynamicPluginID(t *testing.T) {
 		{http.MethodGet, "/plugins/custom-id/stats/initial"},
 		{http.MethodGet, "/plugins/custom-id/stats/trends"},
 		{http.MethodGet, "/plugins/custom-id/stats/groups"},
+		{http.MethodGet, "/plugins/custom-id/stats/health"},
 		{http.MethodGet, "/plugins/custom-id/requests"},
 		{http.MethodGet, "/plugins/custom-id/costs"},
 		{http.MethodGet, "/plugins/custom-id/exchange-rate"},
@@ -1005,5 +1006,100 @@ func TestSortGroupStatsEstimatedCostAndPriceSource(t *testing.T) {
 	items = newItems()
 	if err := sortGroupStats(items, "not_a_column", "desc", nil); err == nil {
 		t.Fatal("unknown sort key must be rejected")
+	}
+}
+
+func TestManagementHealthEndpointIgnoresTimeRangeAndAppliesObjectFilters(t *testing.T) {
+	config := testConfig(t)
+	config.HealthWarn = 95
+	config.HealthCrit = 80
+	st, err := store.Open(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &pluginRuntime{store: st, config: config, routes: registeredRoutes{
+		pluginID:        "test",
+		statsHealthPath: "/v0/management/plugins/test/stats/health",
+	}}
+	defer runtime.shutdown()
+	if err := st.Record(store.Usage{Dimensions: store.Dimensions{Model: "m", Source: "s1"}, RequestedAt: time.Now().UTC(), Counters: store.Counters{Requests: 2, FailedRequests: 1, TotalTokens: 9}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Record(store.Usage{Dimensions: store.Dimensions{Model: "m", Source: "s2"}, RequestedAt: time.Now().UTC(), Counters: store.Counters{Requests: 5, TotalTokens: 50}}); err != nil {
+		t.Fatal(err)
+	}
+
+	type healthPayload struct {
+		SchemaVersion uint32 `json:"schema_version"`
+		WarnPercent   int    `json:"warn_percent"`
+		CritPercent   int    `json:"crit_percent"`
+		Day           []struct {
+			Requests    uint64 `json:"requests"`
+			BucketStart string `json:"bucket_start"`
+		} `json:"day"`
+		Days []struct {
+			Requests uint64 `json:"requests"`
+		} `json:"days"`
+	}
+
+	// Garbage time parameters must be ignored: the health panel has no time filter.
+	request, _ := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: runtime.routes.statsHealthPath, Query: url.Values{
+		"range":  []string{"custom"},
+		"start":  []string{"not-a-timestamp"},
+		"end":    []string{"also-not"},
+		"source": []string{"s1"},
+	}})
+	response, err := runtime.handleManagement(request)
+	if err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("health response: %+v, %v", response, err)
+	}
+	var payload healthPayload
+	if err := json.Unmarshal(response.Body, &payload); err != nil {
+		t.Fatalf("decode health payload: %v / %s", err, response.Body)
+	}
+	if payload.SchemaVersion != 1 || payload.WarnPercent != 95 || payload.CritPercent != 80 {
+		t.Fatalf("health header fields: %+v", payload)
+	}
+	if len(payload.Day) != 24 || len(payload.Days) != 24 {
+		t.Fatalf("health window sizes: day=%d days=%d", len(payload.Day), len(payload.Days))
+	}
+	if payload.Day[23].Requests != 2 {
+		t.Fatalf("health day newest bucket: %+v", payload.Day[23])
+	}
+	if payload.Day[0].BucketStart == "" {
+		t.Fatal("missing bucket_start")
+	}
+
+	// An out-of-range or malformed tz must be rejected; a valid one is accepted.
+	invalidTz, _ := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: runtime.routes.statsHealthPath, Query: url.Values{"tz": []string{"abc"}}})
+	response, err = runtime.handleManagement(invalidTz)
+	if err != nil || response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid tz response: %+v, %v", response, err)
+	}
+	invalidTz, _ = json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: runtime.routes.statsHealthPath, Query: url.Values{"tz": []string{"9999"}}})
+	response, err = runtime.handleManagement(invalidTz)
+	if err != nil || response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("out-of-range tz response: %+v, %v", response, err)
+	}
+	validTz, _ := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: runtime.routes.statsHealthPath, Query: url.Values{"tz": []string{"480"}}})
+	response, err = runtime.handleManagement(validTz)
+	if err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("valid tz response: %+v, %v", response, err)
+	}
+
+	// A scope_model that matches nothing empties the buckets but keeps the shape.
+	request, _ = json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: runtime.routes.statsHealthPath, Query: url.Values{
+		"scope_model": []string{"no-such-model"},
+	}})
+	response, err = runtime.handleManagement(request)
+	if err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("scoped health response: %+v, %v", response, err)
+	}
+	payload = healthPayload{}
+	if err := json.Unmarshal(response.Body, &payload); err != nil {
+		t.Fatalf("decode scoped health payload: %v / %s", err, response.Body)
+	}
+	if payload.Day[23].Requests != 0 {
+		t.Fatalf("scope_model filter leaked usage: %+v", payload.Day[23])
 	}
 }

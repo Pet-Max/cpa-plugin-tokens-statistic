@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -32,6 +33,7 @@ type registeredRoutes struct {
 	statsInitialPath string
 	statsTrendPath   string
 	statsGroupsPath  string
+	statsHealthPath  string
 	requestsPath     string
 	costsPath        string
 	exchangeRatePath string
@@ -65,6 +67,7 @@ func (r *pluginRuntime) registerManagement(raw []byte) (managementRegistrationRe
 		statsInitialPath: managementBase + "/stats/initial",
 		statsTrendPath:   managementBase + "/stats/trends",
 		statsGroupsPath:  managementBase + "/stats/groups",
+		statsHealthPath:  managementBase + "/stats/health",
 		requestsPath:     managementBase + "/requests",
 		costsPath:        managementBase + "/costs",
 		exchangeRatePath: managementBase + "/exchange-rate",
@@ -103,6 +106,11 @@ func (r *pluginRuntime) registerManagement(raw []byte) (managementRegistrationRe
 				Method:      http.MethodGet,
 				Path:        "/plugins/" + pluginID + "/stats/groups",
 				Description: "Read detailed dimension statistics.",
+			},
+			{
+				Method:      http.MethodGet,
+				Path:        "/plugins/" + pluginID + "/stats/health",
+				Description: "Read fixed rolling success-rate health windows for the dashboard health panel.",
 			},
 			{
 				Method:      http.MethodGet,
@@ -228,6 +236,11 @@ func (r *pluginRuntime) dispatchManagement(request pluginapi.ManagementRequest, 
 			return methodNotAllowed(http.MethodGet), nil
 		}
 		return r.groupsStatsResponse(request)
+	case routes.statsHealthPath:
+		if !strings.EqualFold(request.Method, http.MethodGet) {
+			return methodNotAllowed(http.MethodGet), nil
+		}
+		return r.healthStatsResponse(request)
 	case routes.requestsPath:
 		if !strings.EqualFold(request.Method, http.MethodGet) {
 			return methodNotAllowed(http.MethodGet), nil
@@ -271,7 +284,7 @@ func (r *pluginRuntime) dispatchManagement(request pluginapi.ManagementRequest, 
 		return r.apiKeyInfoResponse()
 	case routes.apiKeyLabelsPath:
 		if !strings.EqualFold(request.Method, http.MethodPut) && !strings.EqualFold(request.Method, http.MethodGet) {
-			return methodNotAllowed(http.MethodPut), nil
+			return methodNotAllowed(http.MethodPut + ", " + http.MethodGet), nil
 		}
 		return r.setAPIKeyLabelResponse(request)
 	case routes.resetPath:
@@ -369,6 +382,42 @@ func (r *pluginRuntime) statsTrendResponse(request pluginapi.ManagementRequest) 
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
 	return jsonResponse(http.StatusOK, stats), nil
+}
+
+// healthStatsResponse serves the dashboard health panel. Unlike every other
+// stats surface it takes no time-range parameters: the panel is defined by
+// fixed rolling windows anchored at the current moment. Object dimensions
+// (source, scope_model, API key refs) still apply. The optional `tz` query
+// parameter is the viewer's offset east of UTC in minutes (the inverse of
+// JavaScript's getTimezoneOffset) and aligns bucket boundaries to the
+// viewer's local clock.
+func (r *pluginRuntime) healthStatsResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.store == nil {
+		return jsonResponse(http.StatusServiceUnavailable, map[string]any{"error": "storage is not initialized"}), nil
+	}
+	apiKeyIdentities, err := apiKeyIdentitiesFromRequest(request, r.store)
+	if err != nil {
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
+	}
+	tzMinutes := 0
+	if raw := request.Query.Get("tz"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < -840 || value > 840 {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "tz must be an integer between -840 and 840 minutes"}), nil
+		}
+		tzMinutes = value
+	}
+	filter := scopeModelFilter(request, store.NewFilterFromIdentities(request.Query.Get("source"), apiKeyIdentities))
+	health, err := r.store.QueryHealthByFilter(filter, tzMinutes)
+	if err != nil {
+		status := errs.HTTPStatus(err)
+		return jsonResponse(status, map[string]any{"error": err.Error()}), nil
+	}
+	health.WarnPercent = r.config.HealthWarn
+	health.CritPercent = r.config.HealthCrit
+	return jsonResponse(http.StatusOK, health), nil
 }
 
 func (r *pluginRuntime) groupsStatsResponse(request pluginapi.ManagementRequest) (pluginapi.ManagementResponse, error) {
@@ -889,7 +938,15 @@ func (r *pluginRuntime) restoreResponse(request pluginapi.ManagementRequest) (pl
 		return jsonResponse(http.StatusServiceUnavailable, map[string]any{"error": "storage is not initialized"}), nil
 	}
 	if err := store.RestoreBackup(request.Body); err != nil {
-		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		status := errs.HTTPStatus(err)
+		message := err.Error()
+		if status >= 500 {
+			// Internal restore failures can embed data-directory paths; keep
+			// the detail in the log and return a generic message.
+			fmt.Fprintf(os.Stderr, "tokens-statistic: restore backup failed: %v\n", err)
+			message = "restore backup failed"
+		}
+		return jsonResponse(status, map[string]any{"error": message}), nil
 	}
 	generation, generations := store.APIKeyCryptoState()
 	if r.store == store {
@@ -909,6 +966,9 @@ func (r *pluginRuntime) resetResponse(request pluginapi.ManagementRequest) (plug
 	}
 	var confirmation struct {
 		Confirm string `json:"confirm"`
+	}
+	if len(request.Body) > 2<<20 {
+		return jsonResponse(http.StatusRequestEntityTooLarge, map[string]any{"error": "reset confirmation JSON is too large"}), nil
 	}
 	if err := json.Unmarshal(request.Body, &confirmation); err != nil || confirmation.Confirm != "reset" {
 		return jsonResponse(http.StatusBadRequest, map[string]any{"error": `body must be {"confirm":"reset"}`}), nil

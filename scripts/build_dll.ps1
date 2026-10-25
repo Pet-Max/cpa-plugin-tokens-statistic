@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $rootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$version = if ($env:VERSION) { $env:VERSION } else { "v0.2.1" }
+$version = if ($env:VERSION) { $env:VERSION } else { "v0.3.1" }
 # Store assets carry the version without the leading "v" (e.g. tokens-statistic_0.1.0_windows_amd64.zip).
 $releaseVersion = $version.TrimStart("v")
 $releaseDir = Join-Path $rootDir "dist\release\$version"
@@ -29,7 +29,7 @@ function Build-WindowsDll {
     else {
         $env:CC = "gcc"
     }
-    go build -buildmode=c-shared -buildvcs=false -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=$releaseVersion" -o $OutputPath .
+    go build -buildmode=c-shared -trimpath -buildvcs=false -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=$releaseVersion" -o $OutputPath .
     if ($LASTEXITCODE -ne 0) {
         throw "go build failed for windows/$Arch (exit $LASTEXITCODE)"
     }
@@ -54,11 +54,12 @@ function Package-Zip {
 function Write-Checksums {
     param([Parameter(Mandatory = $true)][string]$Directory)
     # sha256sum-compatible layout: "<hex>  <filename>" (two spaces), matching the store's checksums.txt.
+    # Written with LF line endings and no BOM so `sha256sum -c` on Linux accepts the file.
     $lines = Get-ChildItem $Directory -Filter *.zip | Sort-Object Name | ForEach-Object {
         $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
         "$hash  $($_.Name)"
     }
-    Set-Content -Path (Join-Path $Directory "checksums.txt") -Value $lines -Encoding ascii
+    [IO.File]::WriteAllText((Join-Path $Directory "checksums.txt"), ($lines -join "`n") + "`n")
 }
 
 Push-Location $rootDir

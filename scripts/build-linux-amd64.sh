@@ -7,7 +7,7 @@ set -euo pipefail
 # override (for example a native gcc when building on Linux).
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DIST_DIR="$ROOT_DIR/dist"
-VERSION=${VERSION:-v0.2.1}
+VERSION=${VERSION:-v0.3.1}
 PLUGIN_ID=${PLUGIN_ID:-tokens-statistic}
 
 export PATH="/usr/local/go/bin:$PATH"
@@ -31,7 +31,7 @@ fi
 mkdir -p "$GOPATH"
 mkdir -p "$DIST_DIR"
 cd "$ROOT_DIR"
-go build -buildmode=c-shared -buildvcs=false \
+go build -buildmode=c-shared -trimpath -buildvcs=false \
   -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=${VERSION#v}" \
   -o "$DIST_DIR/${PLUGIN_ID}-${VERSION}.so" .
 echo "built $DIST_DIR/${PLUGIN_ID}-${VERSION}.so"

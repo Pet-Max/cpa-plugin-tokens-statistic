@@ -34,9 +34,13 @@ type Store struct {
 }
 
 type storeActor struct {
-	db                   *bolt.DB
-	config               config.Config
-	crypto               apikey.CryptoContext
+	db     *bolt.DB
+	config config.Config
+	crypto apikey.CryptoContext
+	// terminalErr, when set, means a failed restore left the actor without a
+	// usable database handle. The run loop then refuses every command instead
+	// of dereferencing a nil handle and crashing the host process.
+	terminalErr          error
 	data                 map[aggregateKey]Counters
 	dirty                map[aggregateKey]struct{}
 	since                time.Time

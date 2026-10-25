@@ -7,6 +7,7 @@ import (
 	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/apikey"
 	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/config"
 	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -324,43 +325,24 @@ func (a *storeActor) restoreBackup(backup []byte) (*bolt.DB, error) {
 	_ = os.Remove(rollbackPath)
 
 	if err := a.db.Close(); err != nil {
-		return nil, fmt.Errorf("close database for restore: %w", err)
+		// Close failed, so the old handle is still in place: keep serving
+		// from it and surface the failure to the caller.
+		return a.db, fmt.Errorf("close database for restore: %w", err)
 	}
 	a.db = nil
 
-	reopenLive := func(path string) (*bolt.DB, error) {
-		db, openErr := bolt.Open(path, 0o600, &bolt.Options{Timeout: storeOpenProbeTimeout})
-		if openErr != nil {
-			return nil, openErr
-		}
-		a.db = db
-		if reloadErr := a.reload(); reloadErr != nil {
-			_ = db.Close()
-			a.db = nil
-			return nil, reloadErr
-		}
-		return db, nil
-	}
-
 	if err := os.Rename(livePath, rollbackPath); err != nil {
-		db, openErr := reopenLive(livePath)
-		if openErr != nil {
-			return nil, errors.Join(fmt.Errorf("rename live database aside: %w", err), openErr)
-		}
-		return db, fmt.Errorf("rename live database aside: %w", err)
+		return a.finishRestore(fmt.Errorf("rename live database aside: %w", err), livePath, rollbackPath)
 	}
 
 	if err := os.Rename(stagedPath, livePath); err != nil {
 		cleanupStaged = false
 		_ = os.Remove(stagedPath)
+		restoreErr := fmt.Errorf("promote staged restore database: %w", err)
 		if renameErr := os.Rename(rollbackPath, livePath); renameErr != nil {
-			return nil, errors.Join(fmt.Errorf("promote staged restore database: %w", err), renameErr)
+			return a.finishRestore(errors.Join(restoreErr, renameErr), rollbackPath, livePath)
 		}
-		db, openErr := reopenLive(livePath)
-		if openErr != nil {
-			return nil, errors.Join(fmt.Errorf("promote staged restore database: %w", err), openErr)
-		}
-		return db, fmt.Errorf("promote staged restore database: %w", err)
+		return a.finishRestore(restoreErr, livePath, rollbackPath)
 	}
 	cleanupStaged = false
 	// Directory fsync makes the staged→live rename durable across power loss.
@@ -371,14 +353,11 @@ func (a *storeActor) restoreBackup(backup []byte) (*bolt.DB, error) {
 	db, err := bolt.Open(livePath, 0o600, &bolt.Options{Timeout: storeOpenProbeTimeout})
 	if err != nil {
 		_ = os.Remove(livePath)
+		restoreErr := fmt.Errorf("open restored database: %w", err)
 		if renameErr := os.Rename(rollbackPath, livePath); renameErr != nil {
-			return nil, errors.Join(fmt.Errorf("open restored database: %w", err), renameErr)
+			return a.finishRestore(errors.Join(restoreErr, renameErr), rollbackPath, livePath)
 		}
-		db, openErr := reopenLive(livePath)
-		if openErr != nil {
-			return nil, errors.Join(fmt.Errorf("open restored database: %w", err), openErr)
-		}
-		return db, fmt.Errorf("open restored database: %w", err)
+		return a.finishRestore(restoreErr, livePath, rollbackPath)
 	}
 
 	a.db = db
@@ -386,17 +365,58 @@ func (a *storeActor) restoreBackup(backup []byte) (*bolt.DB, error) {
 		_ = db.Close()
 		a.db = nil
 		_ = os.Remove(livePath)
+		restoreErr := fmt.Errorf("reload restored database: %w", err)
 		if renameErr := os.Rename(rollbackPath, livePath); renameErr != nil {
-			return nil, errors.Join(fmt.Errorf("reload restored database: %w", err), renameErr)
+			return a.finishRestore(errors.Join(restoreErr, renameErr), rollbackPath, livePath)
 		}
-		db, openErr := reopenLive(livePath)
-		if openErr != nil {
-			return nil, errors.Join(fmt.Errorf("reload restored database: %w", err), openErr)
-		}
-		return db, fmt.Errorf("reload restored database: %w", err)
+		return a.finishRestore(restoreErr, livePath, rollbackPath)
 	}
 
 	a.costGeneration++
 	_ = os.Remove(rollbackPath)
 	return db, nil
+}
+
+// reopenDatabase swaps the actor onto the database file at path, loading all
+// in-memory state from it. On failure the actor is left without a handle.
+func (a *storeActor) reopenDatabase(path string) (*bolt.DB, error) {
+	db, openErr := bolt.Open(path, 0o600, &bolt.Options{Timeout: storeOpenProbeTimeout})
+	if openErr != nil {
+		return nil, openErr
+	}
+	a.db = db
+	if reloadErr := a.reload(); reloadErr != nil {
+		_ = db.Close()
+		a.db = nil
+		return nil, reloadErr
+	}
+	return db, nil
+}
+
+// finishRestore salvages a failed restore sequence: it reopens the first
+// candidate file that still holds a valid database. When no candidate can be
+// reopened, the actor enters a terminal state — the run loop then refuses
+// every command instead of dereferencing a nil handle and crashing the host
+// process.
+func (a *storeActor) finishRestore(restoreErr error, candidates ...string) (*bolt.DB, error) {
+	var firstErr error
+	for _, path := range candidates {
+		if path == "" {
+			continue
+		}
+		// bolt.Open would happily create an empty file for a missing path;
+		// only candidates that actually exist are worth reopening.
+		if _, statErr := os.Stat(path); statErr != nil {
+			continue
+		}
+		db, openErr := a.reopenDatabase(path)
+		if openErr == nil {
+			return db, restoreErr
+		}
+		if firstErr == nil {
+			firstErr = openErr
+		}
+	}
+	a.terminalErr = errs.WithStatus(http.StatusServiceUnavailable, "storage is unavailable because the previous restore failed")
+	return nil, errors.Join(restoreErr, firstErr)
 }

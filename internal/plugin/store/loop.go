@@ -38,6 +38,10 @@ func (s *Store) run(actor *storeActor) {
 	for {
 		select {
 		case command := <-s.commands:
+			if actor.terminalErr != nil {
+				actor.respondTerminal(command)
+				continue
+			}
 			switch item := command.(type) {
 			case recordCommand:
 				// Always accept the new usage into the dirty in-memory aggregate. A
@@ -51,7 +55,16 @@ func (s *Store) run(actor *storeActor) {
 						item.resp <- queryResult{err: err}
 						continue
 					}
-					stats, err := actor.queryExactStats(item.queryRange, item.filter, item.spec, now)
+					spec := item.spec
+					switch item.mode {
+					case statsQueryFull, statsQueryInitial:
+						// Mirror the bucket path, which builds full stats with
+						// allGroupFields: provider and executor_type must stay
+						// populated, and initialStatsFromFull merges the group
+						// rows back per model. A zero spec would blank them.
+						spec = allGroupFields()
+					}
+					stats, err := actor.queryExactStats(item.queryRange, item.filter, spec, now)
 					if err != nil {
 						item.resp <- queryResult{err: err}
 						continue
@@ -70,6 +83,23 @@ func (s *Store) run(actor *storeActor) {
 				}
 				if err := actor.retryFailedFlush(now); err != nil {
 					item.resp <- queryResult{err: err}
+					continue
+				}
+				if item.mode == statsQueryHealth {
+					// The health panel needs no time range: its windows are
+					// fixed rolling buckets anchored at the current minute.
+					// A flush first makes the newest request details queryable.
+					if err := actor.flush(now, true); err != nil {
+						actor.lastFlushErr = err
+						item.resp <- queryResult{err: err}
+						continue
+					}
+					health, err := actor.queryHealth(item.filter, now, int64(item.tzMinutes)*60)
+					if err != nil {
+						item.resp <- queryResult{err: err}
+						continue
+					}
+					item.resp <- queryResult{health: health}
 					continue
 				}
 				if err := item.queryRange.validate(); err != nil {
@@ -130,7 +160,10 @@ func (s *Store) run(actor *storeActor) {
 					item.resp <- costSnapshotResult{err: err}
 					continue
 				}
-				err := item.queryRange.validate()
+				if err := item.queryRange.validate(); err != nil {
+					item.resp <- costSnapshotResult{err: errs.WithStatus(400, "%v", err)}
+					continue
+				}
 				item.resp <- costSnapshotResult{snapshot: costQuerySnapshot{
 					Range:         item.queryRange.Name,
 					Start:         item.queryRange.Start,
@@ -142,7 +175,7 @@ func (s *Store) run(actor *storeActor) {
 					HighWater:     actor.nextRequestSeq,
 					Generation:    actor.costGeneration,
 					Filter:        item.filter,
-				}, err: err}
+				}}
 			case resetCommand:
 				if err := actor.retryFailedFlush(time.Now().UTC()); err != nil {
 					item.resp <- resetResult{err: err}
@@ -187,8 +220,58 @@ func (s *Store) run(actor *storeActor) {
 				return
 			}
 		case now := <-ticker.C:
+			if actor.terminalErr != nil {
+				continue
+			}
 			actor.lastFlushErr = actor.flush(now.UTC(), false)
 		}
+	}
+}
+
+// respondTerminal answers every command with the terminal error after a
+// failed restore left the actor without a usable database handle. It must
+// handle every command type the run loop accepts — update both together.
+func (a *storeActor) respondTerminal(command any) {
+	err := a.terminalErr
+	switch item := command.(type) {
+	case recordCommand:
+		item.resp <- err
+	case queryCommand:
+		item.resp <- queryResult{err: err}
+	case requestQueryCommand:
+		item.resp <- requestQueryResult{err: err}
+	case preferencesQueryCommand:
+		item.resp <- preferencesResult{err: err}
+	case savePreferencesCommand:
+		item.resp <- preferencesResult{err: err}
+	case labelQueryCommand:
+		item.resp <- labelQueryResult{err: err}
+	case labelSetCommand:
+		item.resp <- err
+	case apiKeyResolveCommand:
+		item.resp <- apiKeyResolveResult{err: err}
+	case priceQueryCommand:
+		item.resp <- priceQueryResult{err: err}
+	case savePricesCommand:
+		item.resp <- priceQueryResult{err: err}
+	case syncPricesCommand:
+		item.resp <- priceQueryResult{err: err}
+	case observedModelsCommand:
+		item.resp <- observedModelsResult{err: err}
+	case costSnapshotCommand:
+		item.resp <- costSnapshotResult{err: err}
+	case resetCommand:
+		item.resp <- resetResult{err: err}
+	case configCommand:
+		item.resp <- configResult{err: err}
+	case backupCommand:
+		item.resp <- backupResult{err: err}
+	case restoreCommand:
+		item.resp <- restoreResult{err: err}
+	case closeCommand:
+		// Nothing to flush and no handle to close: release the waiter.
+		item.resp <- nil
+		return
 	}
 }
 

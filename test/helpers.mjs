@@ -8,11 +8,60 @@ export async function readDashboardFile(htmlPath) {
   return readFile(htmlPath);
 }
 
+// Fixed rolling health windows for the dashboard health panel; anchored at
+// "now" like the real endpoint so partial flags stay truthful.
+export function healthFixtures({ model = 'browser-test-model' } = {}) {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const build = (width, count, degradedIndex) => Array.from({ length: count }, (_, i) => {
+    const start = Math.floor(nowSeconds / width) * width - (count - 1 - i) * width;
+    const requests = i === degradedIndex ? 86 : 20 + (i % 5);
+    const failed = i === degradedIndex ? 6 : 0;
+    return {
+      bucket_start: new Date(start * 1000).toISOString(),
+      bucket_end: new Date((start + width) * 1000).toISOString(),
+      partial: i === count - 1,
+      requests,
+      failed_requests: failed,
+      input_tokens: 1000,
+      output_tokens: 500,
+      cached_tokens: 0,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+      total_tokens: 1500,
+      total_latency_ns: 2_000_000_000,
+      latency_samples: requests,
+      total_ttft_ns: 900_000_000,
+      ttft_samples: requests,
+    };
+  });
+  return {
+    schema_version: 1,
+    generated_at: new Date(nowSeconds * 1000).toISOString(),
+    warn_percent: 95,
+    crit_percent: 80,
+    day: build(3600, 24, 8),
+    days: build(86400, 24, -1),
+    calls: Array.from({ length: 24 }, (_, i) => ({
+      time: new Date((nowSeconds - (23 - i) * 150) * 1000).toISOString(),
+      failed: i === 6,
+      latency_ns: 400_000_000 + (i % 6) * 120_000_000,
+      ttft_ns: 150_000_000 + (i % 5) * 90_000_000,
+      total_tokens: 1_200 + (i % 7) * 150,
+      input_tokens: 1_000 + (i % 7) * 150,
+      cache_read_tokens: i % 3 === 0 ? 400 : 0,
+      cached_tokens: 0,
+      cache_creation_tokens: 0,
+      model,
+    })),
+  };
+}
+
 // One consistent usage record per scenario; override rows via the fixtures
 // argument rather than editing these literals.
 export function defaultFixtures({ model = 'browser-test-model' } = {}) {
   return {
     apiKeyInfo: { api_key_tracking_enabled: true, api_key_uses_default_secret: false, api_key_labels: {} },
+    health: healthFixtures({ model }),
     preferences: {},
     preferencesPost: null,
     statsInitial: {
@@ -166,6 +215,11 @@ export function startDashboardServer({ dashboardHTML, pluginId, fixtures = defau
         return;
       }
       sendJSON(fx.preferences);
+      return;
+    }
+    if (url.pathname === `${managementBase}/stats/health`) {
+      if (fx.health === 'no-response') return;
+      sendJSON(fx.health);
       return;
     }
     if (url.pathname === `${managementBase}/stats/initial`) {

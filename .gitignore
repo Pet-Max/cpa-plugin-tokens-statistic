@@ -43,6 +43,10 @@ yarn-error.log*
 .tmp-variants/
 .tools/
 
+# Preview screenshots / local recordings
+design-preview/
+*.mp4
+
 # Patch leftovers
 *.orig
 *.rej

@@ -20,6 +20,10 @@ Tokens Statistic 是一个 [CLIProxyAPI](https://github.com/router-for-me/CLIPro
 
 ![指标卡片](images/dashboard-cards.png)
 
+**服务健康**
+
+![服务健康](images/dashboard-health.png)
+
 | Tokens 分析 | 请求明细 |
 |:-:|:-:|
 | ![Tokens 分析](images/dashboard-analysis.png) | ![请求明细](images/dashboard-requests.png) |
@@ -68,6 +72,9 @@ plugins:
       retention: 365    # 逐分钟聚合与请求明细的保留天数（1–3650），默认 365
       flush: 5s         # 批量写盘间隔（1s–1h）。小主机（NAS/SD 卡等写入敏感设备）推荐值；省略此行 = 每条请求立即落库（默认）
       secret: "123456"  # API Key 加密密钥。123456 即默认值，仅建议本机测试；公开部署须改为不少于 32 字节的随机串
+      # health:          # 服务健康面板的成功率阈值（可选）
+      #   warn: 95       # 低于 95% 标黄（降级），默认 95
+      #   crit: 80       # 低于 80% 标红（异常），默认 80
 ```
 
 4. 字段说明：
@@ -78,6 +85,7 @@ plugins:
 | `retention` | `365` | 逐分钟聚合与请求明细的保留天数（1–3650），过期自动清理 |
 | `flush` | 空 | 留空表示每条请求立即落库；填写后按间隔批量写盘（1s–1h）。小主机或高频调用建议 5s；突发流量由内部 100 条/批上限自动摊平 |
 | `secret` | `123456` | API Key 加密与指纹密钥，自定义须不少于 32 字节。公开部署必须修改；留空则完全禁用 API Key 追踪 |
+| `health.warn` / `health.crit` | `95` / `80` | 服务健康面板的成功率阈值：成功率低于 warn 标黄（降级）、低于 crit 标红（异常）。均为 0–100 且 warn 必须大于 crit |
 
 ## 构建
 
@@ -106,7 +114,7 @@ plugins:
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
   CC="zig cc -target x86_64-linux-gnu" \
   go build -buildmode=c-shared -trimpath -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.2.2" \
+  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.3.1" \
   -o tokens-statistic.so .
 ```
 
@@ -114,7 +122,7 @@ CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
 
 - 原始动态库输出到 `dist/`；
 - 商店规格发布包（`tokens-statistic_<版本>_<平台>.zip` + `checksums.txt`）统一输出到 `dist/release/v<版本>/`，与 CI 发行的 Release 资产同规格；
-- 版本通过 `VERSION` 覆盖，例如 `VERSION=v0.2.2 bash scripts/build-linux-amd64.sh`。
+- 版本通过 `VERSION` 覆盖，例如 `VERSION=v0.3.1 bash scripts/build-linux-amd64.sh`。
 
 测试：
 
