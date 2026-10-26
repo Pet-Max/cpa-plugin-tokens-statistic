@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -10,16 +11,84 @@ import (
 // HealthPoint is one fixed-width bucket of the dashboard health panel. The
 // embedded Counters carry sums (latency/TTFT totals plus sample counts) so the
 // dashboard can compute per-bucket averages and success rates itself.
+// CacheRateNumerator/CacheRateDenominator accumulate the accounting-aware
+// cache-rate pair at query time; rows with an unknown provider contribute
+// nothing, so a zero denominator means "unclassified", not "no cache".
 type HealthPoint struct {
-	BucketStart string `json:"bucket_start"`
-	BucketEnd   string `json:"bucket_end"`
-	Partial     bool   `json:"partial"`
+	BucketStart          string `json:"bucket_start"`
+	BucketEnd            string `json:"bucket_end"`
+	Partial              bool   `json:"partial"`
+	CacheRateNumerator   uint64 `json:"cache_rate_numerator"`
+	CacheRateDenominator uint64 `json:"cache_rate_denominator"`
 	Counters
+}
+
+type cacheAccounting uint8
+
+const (
+	cacheAccountingSubset cacheAccounting = iota
+	cacheAccountingIndependent
+)
+
+// cacheAccountingForDimensions mirrors the dashboard's cacheAccountingKind so
+// bucket cache rates follow the same provider semantics as the request table.
+func cacheAccountingForDimensions(d Dimensions) (cacheAccounting, bool) {
+	provider := strings.ToLower(strings.TrimSpace(d.Provider))
+	executor := strings.ToLower(strings.TrimSpace(d.ExecutorType))
+	value := provider + " " + executor
+	if provider == "openai-compatibility" || strings.HasPrefix(provider, "openai-compatible-") || executor == "openaicompatexecutor" {
+		return cacheAccountingSubset, true
+	}
+	if provider == "claude" || provider == "anthropic" || strings.Contains(value, "claude") || strings.Contains(value, "anthropic") {
+		return cacheAccountingIndependent, true
+	}
+	if provider == "openai" || provider == "codex" || provider == "gemini" || provider == "gemini-interactions" {
+		return cacheAccountingSubset, true
+	}
+	for _, marker := range []string{"openai", "codex", "xai", "grok", "kimi", "qwen", "deepseek", "openrouter", "gemini", "aistudio", "antigravity", "vertex", "interaction"} {
+		if strings.Contains(value, marker) {
+			return cacheAccountingSubset, true
+		}
+	}
+	return cacheAccountingSubset, false
+}
+
+// cacheRateParts reduces one aggregate row to the numerator/denominator pair
+// of its accounting-aware cache rate. CLIProxyAPI reports CachedTokens and
+// CacheReadTokens with the same value, so the numerator must count cache
+// tokens once. ok is false for rows whose cache fields are inconsistent with
+// the row's accounting flavour or that carry no input total, matching the
+// dashboard's request-table logic of skipping what it cannot classify.
+func cacheRateParts(kind cacheAccounting, c Counters) (numerator, denominator uint64, ok bool) {
+	if c.CacheReadTokens > 0 {
+		numerator = c.CacheReadTokens
+	} else if c.CacheCreationTokens > 0 && c.CachedTokens == c.CacheCreationTokens {
+		numerator = 0
+	} else if kind == cacheAccountingIndependent {
+		if c.CacheCreationTokens == 0 && c.CachedTokens > 0 {
+			numerator = c.CachedTokens
+		} else if c.CachedTokens != 0 {
+			return 0, 0, false
+		}
+	} else if c.CachedTokens > 0 {
+		numerator = c.CachedTokens
+	}
+	if kind == cacheAccountingIndependent {
+		denominator = c.InputTokens + c.CacheCreationTokens + c.CacheReadTokens
+	} else {
+		denominator = c.InputTokens
+	}
+	if denominator == 0 {
+		return 0, 0, false
+	}
+	return numerator, denominator, true
 }
 
 // HealthCall is one individual request shown in the live tail of the health
 // panel. Only non-sensitive fields are exposed — API key identities never
-// leave the store.
+// leave the store. Provider/ExecutorType carry no identity either (the
+// request log already serves them) and let the dashboard classify cache
+// accounting exactly like the request table does.
 type HealthCall struct {
 	Time                string `json:"time"`
 	Failed              bool   `json:"failed"`
@@ -31,6 +100,8 @@ type HealthCall struct {
 	CachedTokens        uint64 `json:"cached_tokens"`
 	CacheCreationTokens uint64 `json:"cache_creation_tokens"`
 	Model               string `json:"model"`
+	Provider            string `json:"provider"`
+	ExecutorType        string `json:"executor_type"`
 }
 
 // HealthResponse carries the rolling windows of the health panel: Day
@@ -101,6 +172,8 @@ func (a *storeActor) lastCalls(filter Filter, limit int, now time.Time) []Health
 				CachedTokens:        item.Counters.CachedTokens,
 				CacheCreationTokens: item.Counters.CacheCreationTokens,
 				Model:               CompactModelName(dimensions.Model),
+				Provider:            dimensions.Provider,
+				ExecutorType:        dimensions.ExecutorType,
 			})
 		}
 		return nil
@@ -152,6 +225,10 @@ func buildHealthWindows(data map[aggregateKey]Counters, filter Filter, now time.
 			continue
 		}
 		minute := key.Hour
+		numerator, denominator, hasRate := uint64(0), uint64(0), false
+		if kind, known := cacheAccountingForDimensions(key.Dimensions); known {
+			numerator, denominator, hasRate = cacheRateParts(kind, counters)
+		}
 		for wi := range windows {
 			w := &windows[wi]
 			if minute < w.start {
@@ -162,6 +239,10 @@ func buildHealthWindows(data map[aggregateKey]Counters, filter Filter, now time.
 				continue
 			}
 			w.points[index].Counters.add(counters)
+			if hasRate {
+				w.points[index].CacheRateNumerator += numerator
+				w.points[index].CacheRateDenominator += denominator
+			}
 		}
 	}
 	return HealthResponse{

@@ -40,22 +40,25 @@ type storeActor struct {
 	// terminalErr, when set, means a failed restore left the actor without a
 	// usable database handle. The run loop then refuses every command instead
 	// of dereferencing a nil handle and crashing the host process.
-	terminalErr          error
-	data                 map[aggregateKey]Counters
-	dirty                map[aggregateKey]struct{}
-	since                time.Time
-	lastUsed             time.Time
-	pending              int
-	lastPruneAt          time.Time
-	lastFlushErr         error
-	pendingRequests      []RequestDetail
-	nextRequestSeq       uint64
-	modelPrices          map[string]ModelPrice
-	priceRevision        uint64
-	priceSyncSettings    PriceSyncSettings
-	lastPriceSync        *PriceSyncMetadata
-	priceSavedAt         *time.Time
-	costGeneration       uint64
+	terminalErr       error
+	data              map[aggregateKey]Counters
+	dirty             map[aggregateKey]struct{}
+	since             time.Time
+	lastUsed          time.Time
+	pending           int
+	lastPruneAt       time.Time
+	lastFlushErr      error
+	pendingRequests   []RequestDetail
+	nextRequestSeq    uint64
+	modelPrices       map[string]ModelPrice
+	priceRevision     uint64
+	priceSyncSettings PriceSyncSettings
+	lastPriceSync     *PriceSyncMetadata
+	priceSavedAt      *time.Time
+	costGeneration    uint64
+	// panicHook, when set, runs at command intake and is test-only: it lets
+	// tests inject a panic into the actor loop to exercise the recovery path.
+	panicHook            func()
 	dashboardPreferences DashboardPreferences
 	apiKeyCiphertexts    map[string]string
 	apiKeyLabels         map[string]string
@@ -165,8 +168,15 @@ func (s *Store) Close() error {
 		s.closed = true
 		s.commands <- closeCommand{resp: resp}
 		s.stateMu.Unlock()
-		s.closeErr = <-resp
-		<-s.done
+		// The actor answers the close command on every live path, but a
+		// post-panic exit leaves the buffered command unanswered forever —
+		// stop waiting once done shows the loop is gone.
+		select {
+		case err := <-resp:
+			s.closeErr = err
+		case <-s.done:
+			s.closeErr = nil
+		}
 		if s.lease != nil {
 			s.lease.release()
 		}

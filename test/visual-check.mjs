@@ -3,18 +3,18 @@ import { pathToFileURL } from 'url';
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright-core');
 
-const helpersURL = pathToFileURL('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/test/helpers.mjs').href;
+const helpersURL = pathToFileURL('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/test/helpers.mjs').href;
 const { readDashboardFile, startDashboardServer, healthFixtures } = await import(helpersURL);
 
-const htmlPath = 'D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/internal/plugin/web/dashboard.html';
-const outDir = 'D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/design-preview';
+const htmlPath = 'D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/internal/plugin/web/dashboard.html';
+const outDir = 'D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/design-preview';
 const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 
 const html = (await readDashboardFile(htmlPath)).toString().replace('/*LOCALE_PLACEHOLDER*/', JSON.stringify({
-  'zh-CN': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/internal/plugin/web/locales/zh-CN.json', 'utf-8')),
-  'zh-TW': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/internal/plugin/web/locales/zh-TW.json', 'utf-8')),
-  en: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/internal/plugin/web/locales/en.json', 'utf-8')),
-  ru: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/internal/plugin/web/locales/ru.json', 'utf-8')),
+  'zh-CN': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/internal/plugin/web/locales/zh-CN.json', 'utf-8')),
+  'zh-TW': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/internal/plugin/web/locales/zh-TW.json', 'utf-8')),
+  en: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/internal/plugin/web/locales/en.json', 'utf-8')),
+  ru: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/internal/plugin/web/locales/ru.json', 'utf-8')),
 }));
 
 const server = startDashboardServer({ dashboardHTML: html, pluginId: 'test' });

@@ -18,7 +18,7 @@ import (
 
 // version is set at build time with:
 // -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=<version>
-var version = "0.3.1"
+var version = "0.3.2"
 
 // maxSupportedRPCSchema is intentionally independent from the SDK's latest
 // schema. Future hosts may negotiate down to this verified contract without

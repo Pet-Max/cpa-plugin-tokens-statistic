@@ -15,6 +15,12 @@ import (
 // not emitted in new statistics responses.
 const legacyUntitledModelName = "未标记模型"
 
+// untitledModelFilter is the locale-independent filter value for records
+// without a model name. The dashboard sends it instead of the localized
+// presentation label (e.g. "Unnamed model"), which ModelFilterMatches would
+// never find in the stored dimensions.
+const untitledModelFilter = "__untitled__"
+
 type Dimensions struct {
 	Provider         string `json:"provider"`
 	ExecutorType     string `json:"executor_type"`
@@ -625,10 +631,15 @@ func CompactModelName(model string) string {
 
 // ModelFilterMatches keeps the old Chinese "unnamed model" filter value
 // working while API payloads remain backend-neutral and let the dashboard
-// localize presentation.
+// localize presentation. untitledModelFilter is the same empty-model filter
+// in a language-neutral spelling that the dashboard sends for unnamed-model
+// drill-down in every locale.
 func ModelFilterMatches(requested, model string) bool {
 	model = CompactModelName(model)
-	return model == requested || (requested == legacyUntitledModelName && model == "")
+	if model == requested {
+		return true
+	}
+	return model == "" && (requested == legacyUntitledModelName || requested == untitledModelFilter)
 }
 
 func sortedCompactSeries(series map[int64]Counters) []SeriesPoint {

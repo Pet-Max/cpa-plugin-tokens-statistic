@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/config"
 	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
@@ -171,5 +172,46 @@ func TestRespondTerminalRepliesToEveryCommand(t *testing.T) {
 	actor.respondTerminal(closeCommand{resp: closed})
 	if err := <-closed; err != nil {
 		t.Fatalf("close must release the waiter without error, got %v", err)
+	}
+}
+
+// A store that entered terminal state after a failed restore must still let
+// Close return: the actor loop has to answer the close command and exit so
+// the deferred done close fires instead of deadlocking the host shutdown.
+func TestTerminalStoreCloseReleases(t *testing.T) {
+	actor := &storeActor{terminalErr: errors.New("terminal"), config: testConfig(t)}
+	store := &Store{commands: make(chan any, 16), done: make(chan struct{})}
+	go store.run(actor)
+
+	closed := make(chan error, 1)
+	go func() { closed <- store.Close() }()
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatalf("terminal close must release without error, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Close deadlocked while the actor was in terminal state")
+	}
+}
+
+// respondWith must never block even when the response channel is already
+// full: the panic recovery path answers best-effort and moves on.
+func TestRespondWithNeverBlocksOnFullChannel(t *testing.T) {
+	actor := &storeActor{terminalErr: errors.New("terminal")}
+	record := make(chan error, 1)
+	actor.respondWith(recordCommand{resp: record}, actor.terminalErr)
+	done := make(chan struct{})
+	go func() {
+		actor.respondWith(recordCommand{resp: record}, errors.New("second"))
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("respondWith blocked on a full response channel")
+	}
+	if got := <-record; got == nil || got.Error() != "terminal" {
+		t.Fatalf("first answer must be preserved, got %v", got)
 	}
 }

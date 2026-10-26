@@ -533,4 +533,7 @@ func TestLegacyUntitledModelFilterCompatibility(t *testing.T) {
 	if !ModelFilterMatches(legacyUntitledModelName, "") || ModelFilterMatches(legacyUntitledModelName, "named") {
 		t.Fatal("legacy unnamed-model filter compatibility is incorrect")
 	}
+	if !ModelFilterMatches(untitledModelFilter, "") || ModelFilterMatches(untitledModelFilter, "named") {
+		t.Fatal("locale-neutral unnamed-model filter compatibility is incorrect")
+	}
 }

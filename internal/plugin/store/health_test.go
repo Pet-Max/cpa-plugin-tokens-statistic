@@ -117,7 +117,7 @@ func TestQueryHealthByFilterRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	if err := st.Record(Usage{Dimensions: Dimensions{Model: "m", Failed: true}, RequestedAt: time.Now().UTC(), Counters: Counters{Requests: 1, FailedRequests: 1, TotalTokens: 9, InputTokens: 6, CacheReadTokens: 3}}); err != nil {
+	if err := st.Record(Usage{Dimensions: Dimensions{Model: "m", Failed: true, Provider: "openai-compatibility", ExecutorType: "openaicompatexecutor"}, RequestedAt: time.Now().UTC(), Counters: Counters{Requests: 1, FailedRequests: 1, TotalTokens: 9, InputTokens: 6, CacheReadTokens: 3}}); err != nil {
 		t.Fatal(err)
 	}
 	// A two-hour-old call must fall outside the live tail's one-hour window.
@@ -137,6 +137,35 @@ func TestQueryHealthByFilterRoundTrip(t *testing.T) {
 	call := resp.Calls[0]
 	if call.Failed != true || call.TotalTokens != 9 || call.InputTokens != 6 || call.CacheReadTokens != 3 || call.Model != "m" {
 		t.Fatalf("health call fields: %+v", call)
+	}
+	if call.Provider != "openai-compatibility" || call.ExecutorType != "openaicompatexecutor" {
+		t.Fatalf("health call provider fields: %+v", call)
+	}
+}
+
+func TestBuildHealthWindowsCacheRateClassification(t *testing.T) {
+	now := time.Date(2026, 10, 24, 9, 7, 30, 0, time.UTC)
+	minute := now.Truncate(time.Minute).Unix()
+	data := map[aggregateKey]Counters{
+		// OpenAI-style: cached is part of input; CLIProxyAPI dual-fills read.
+		{Hour: minute, Dimensions: Dimensions{Model: "m", Provider: "openai-compatibility", ExecutorType: "openaicompatexecutor"}}: {Requests: 1, InputTokens: 100000, CachedTokens: 60000, CacheReadTokens: 60000},
+		// Anthropic-style: cache buckets independent of input, dual-filled read.
+		{Hour: minute, Dimensions: Dimensions{Model: "m", Provider: "claude"}}: {Requests: 1, InputTokens: 40000, CachedTokens: 60000, CacheReadTokens: 60000, CacheCreationTokens: 20000},
+		// Gemini via executor-string marker: cache lives inside input totals.
+		{Hour: minute, Dimensions: Dimensions{Model: "m", ExecutorType: "GeminiCLIExecutor"}}: {Requests: 1, InputTokens: 50000, CachedTokens: 10000, CacheReadTokens: 10000},
+		// Unknown provider: must contribute nothing to the accounting-aware sums.
+		{Hour: minute, Dimensions: Dimensions{Model: "m"}}: {Requests: 1, InputTokens: 999999, CachedTokens: 999999, CacheReadTokens: 999999},
+	}
+	resp := buildHealthWindows(data, Filter{Model: "m"}, now, 0)
+	point := resp.Day[23]
+	// Numerator counts cache tokens once per row: 60000 + 60000 + 10000; the
+	// unknown row is skipped entirely, so the denominator only sums the three
+	// classified rows: 100000 + 120000 + 50000.
+	if point.CacheRateNumerator != 130000 || point.CacheRateDenominator != 270000 {
+		t.Fatalf("cache rate sums: numerator=%d denominator=%d", point.CacheRateNumerator, point.CacheRateDenominator)
+	}
+	if resp.Days[22].CacheRateDenominator != 0 || resp.Days[22].CacheRateNumerator != 0 {
+		t.Fatalf("empty bucket must keep zero cache-rate sums: %+v", resp.Days[22])
 	}
 }
 

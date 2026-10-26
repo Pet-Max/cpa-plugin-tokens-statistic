@@ -22,6 +22,10 @@ export function healthFixtures({ model = 'browser-test-model' } = {}) {
       partial: i === count - 1,
       requests,
       failed_requests: failed,
+      // Accounting-aware cache-rate sums as the real store emits them
+      // (classified per aggregate row at query time).
+      cache_rate_numerator: 0,
+      cache_rate_denominator: 1000,
       input_tokens: 1000,
       output_tokens: 500,
       cached_tokens: 0,
@@ -49,8 +53,12 @@ export function healthFixtures({ model = 'browser-test-model' } = {}) {
       total_tokens: 1_200 + (i % 7) * 150,
       input_tokens: 1_000 + (i % 7) * 150,
       cache_read_tokens: i % 3 === 0 ? 400 : 0,
-      cached_tokens: 0,
+      // CLIProxyAPI dual-fills CachedTokens and CacheReadTokens with the same
+      // value; mirror that so cache-rate scenarios see production-shaped data.
+      cached_tokens: i % 3 === 0 ? 400 : 0,
       cache_creation_tokens: 0,
+      provider: 'openai-compatibility',
+      executor_type: 'openaicompatexecutor',
       model,
     })),
   };

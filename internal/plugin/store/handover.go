@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -127,6 +128,14 @@ func (l *storeLease) monitor(store *Store) {
 	if l == nil || store == nil {
 		return
 	}
+	// The monitor is a watchdog, not a request path: a panic here only degrades
+	// hot-reload handover, so log it and let the goroutine exit instead of
+	// taking down the host process.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			fmt.Fprintf(os.Stderr, "tokens-statistic: store lease monitor panic: %v\n%s", recovered, debug.Stack())
+		}
+	}()
 	ticker := time.NewTicker(storeLeasePollInterval)
 	defer ticker.Stop()
 	for {

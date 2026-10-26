@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"runtime/debug"
+	"time"
+
 	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/apikey"
 	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/config"
 	"github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin/errs"
-	"time"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -34,13 +37,52 @@ func (s *Store) run(actor *storeActor) {
 	ticker := time.NewTicker(actor.config.FlushInterval)
 	defer ticker.Stop()
 	defer close(s.done)
-
-	for {
+	stop := func() (exit bool) {
+		var pending any
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				fmt.Fprintf(os.Stderr, "tokens-statistic: store actor panic: %v\n%s", recovered, debug.Stack())
+				if pending != nil {
+					// The interrupted command's work may have partially run; answer
+					// it so the caller does not block forever. Non-blocking: when the
+					// command already produced its own answer, drop this one.
+					actor.respondWith(pending, fmt.Errorf("store actor panic: %v", recovered))
+				}
+				// The loop is about to exit with no one left to run the close
+				// command's flush+db.Close. Best-effort release of the bbolt file
+				// lock so a same-process handover can still reopen the database.
+				// Guarded and time-capped: a panic mid-transaction may have left
+				// bolt's internal mutex poisoned.
+				releaseDone := make(chan struct{})
+				go func() {
+					defer close(releaseDone)
+					defer func() { _ = recover() }()
+					_ = actor.db.Close()
+				}()
+				select {
+				case <-releaseDone:
+				case <-time.After(2 * time.Second):
+					fmt.Fprintf(os.Stderr, "tokens-statistic: store db.Close timed out after actor panic\n")
+				}
+				exit = true // unknown panic site: loop state is no longer trustworthy
+			}
+		}()
 		select {
 		case command := <-s.commands:
+			pending = command
+			if hook := actor.panicHook; hook != nil {
+				hook()
+			}
 			if actor.terminalErr != nil {
+				if _, isClose := command.(closeCommand); isClose {
+					// A dead store must still answer Close: the nil response releases
+					// the waiter and the true return below fires the deferred done
+					// close, so Close stops waiting.
+					actor.respondTerminal(command)
+					return true
+				}
 				actor.respondTerminal(command)
-				continue
+				return false
 			}
 			switch item := command.(type) {
 			case recordCommand:
@@ -53,7 +95,7 @@ func (s *Store) run(actor *storeActor) {
 					if err := actor.flush(now, true); err != nil {
 						actor.lastFlushErr = err
 						item.resp <- queryResult{err: err}
-						continue
+						return false
 					}
 					spec := item.spec
 					switch item.mode {
@@ -67,7 +109,7 @@ func (s *Store) run(actor *storeActor) {
 					stats, err := actor.queryExactStats(item.queryRange, item.filter, spec, now)
 					if err != nil {
 						item.resp <- queryResult{err: err}
-						continue
+						return false
 					}
 					switch item.mode {
 					case statsQueryInitial:
@@ -79,11 +121,11 @@ func (s *Store) run(actor *storeActor) {
 					default:
 						item.resp <- queryResult{stats: stats}
 					}
-					continue
+					return false
 				}
 				if err := actor.retryFailedFlush(now); err != nil {
 					item.resp <- queryResult{err: err}
-					continue
+					return false
 				}
 				if item.mode == statsQueryHealth {
 					// The health panel needs no time range: its windows are
@@ -92,19 +134,19 @@ func (s *Store) run(actor *storeActor) {
 					if err := actor.flush(now, true); err != nil {
 						actor.lastFlushErr = err
 						item.resp <- queryResult{err: err}
-						continue
+						return false
 					}
 					health, err := actor.queryHealth(item.filter, now, int64(item.tzMinutes)*60)
 					if err != nil {
 						item.resp <- queryResult{err: err}
-						continue
+						return false
 					}
 					item.resp <- queryResult{health: health}
-					continue
+					return false
 				}
 				if err := item.queryRange.validate(); err != nil {
 					item.resp <- queryResult{err: errs.WithStatus(400, "%v", err)}
-					continue
+					return false
 				}
 				switch item.mode {
 				case statsQueryInitial:
@@ -122,7 +164,7 @@ func (s *Store) run(actor *storeActor) {
 				if err := actor.flush(now, true); err != nil {
 					actor.lastFlushErr = err
 					item.resp <- requestQueryResult{err: err}
-					continue
+					return false
 				}
 				page, err := actor.queryRequests(item.queryRange, item.offset, item.limit, item.model, item.filter, item.result, now)
 				item.resp <- requestQueryResult{page: page, err: err}
@@ -150,7 +192,7 @@ func (s *Store) run(actor *storeActor) {
 				if err := actor.flush(item.now, true); err != nil {
 					actor.lastFlushErr = err
 					item.resp <- observedModelsResult{err: err}
-					continue
+					return false
 				}
 				item.resp <- observedModelsResult{models: actor.observedModels(item.now)}
 			case costSnapshotCommand:
@@ -158,11 +200,11 @@ func (s *Store) run(actor *storeActor) {
 				if err := actor.flush(now, true); err != nil {
 					actor.lastFlushErr = err
 					item.resp <- costSnapshotResult{err: err}
-					continue
+					return false
 				}
 				if err := item.queryRange.validate(); err != nil {
 					item.resp <- costSnapshotResult{err: errs.WithStatus(400, "%v", err)}
-					continue
+					return false
 				}
 				item.resp <- costSnapshotResult{snapshot: costQuerySnapshot{
 					Range:         item.queryRange.Name,
@@ -179,14 +221,14 @@ func (s *Store) run(actor *storeActor) {
 			case resetCommand:
 				if err := actor.retryFailedFlush(time.Now().UTC()); err != nil {
 					item.resp <- resetResult{err: err}
-					continue
+					return false
 				}
 				err := actor.reset()
 				item.resp <- resetResult{generation: actor.activeGeneration, generations: cloneAPIKeyGenerations(actor.generations), err: err}
 			case configCommand:
 				if err := actor.retryFailedFlush(time.Now().UTC()); err != nil {
 					item.resp <- configResult{err: err}
-					continue
+					return false
 				}
 				err := actor.reconfigure(item.config, item.crypto)
 				if err == nil {
@@ -198,7 +240,7 @@ func (s *Store) run(actor *storeActor) {
 				if err := actor.flush(now, true); err != nil {
 					actor.lastFlushErr = err
 					item.resp <- backupResult{err: err}
-					continue
+					return false
 				}
 				buffer := &limitedBuffer{max: MaxDatabaseBackupBytes}
 				err := actor.db.View(func(tx *bolt.Tx) error {
@@ -207,7 +249,7 @@ func (s *Store) run(actor *storeActor) {
 				})
 				if err != nil {
 					item.resp <- backupResult{err: fmt.Errorf("backup database: %w", err)}
-					continue
+					return false
 				}
 				item.resp <- backupResult{data: buffer.buf}
 			case restoreCommand:
@@ -217,13 +259,27 @@ func (s *Store) run(actor *storeActor) {
 				flushErr := actor.flush(time.Now().UTC(), true)
 				closeErr := actor.db.Close()
 				item.resp <- errors.Join(flushErr, closeErr)
-				return
+				return true
 			}
 		case now := <-ticker.C:
 			if actor.terminalErr != nil {
-				continue
+				return false
 			}
-			actor.lastFlushErr = actor.flush(now.UTC(), false)
+			func() {
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						fmt.Fprintf(os.Stderr, "tokens-statistic: store flush panic: %v\n%s", recovered, debug.Stack())
+						actor.lastFlushErr = fmt.Errorf("flush panic: %v", recovered)
+					}
+				}()
+				actor.lastFlushErr = actor.flush(now.UTC(), false)
+			}()
+		}
+		return exit
+	}
+	for {
+		if stop() {
+			return
 		}
 	}
 }
@@ -232,46 +288,107 @@ func (s *Store) run(actor *storeActor) {
 // failed restore left the actor without a usable database handle. It must
 // handle every command type the run loop accepts — update both together.
 func (a *storeActor) respondTerminal(command any) {
-	err := a.terminalErr
+	a.respondWith(command, a.terminalErr)
+}
+
+// respondWith answers any command with err. Response channels are freshly
+// created and buffered by the callers, so the non-blocking send never skips
+// on the normal path; it only keeps a panic recovery from answering twice
+// and blocking forever on a full channel. It must handle every command type
+// the run loop accepts — update both together.
+func (a *storeActor) respondWith(command any, err error) {
 	switch item := command.(type) {
 	case recordCommand:
-		item.resp <- err
+		select {
+		case item.resp <- err:
+		default:
+		}
 	case queryCommand:
-		item.resp <- queryResult{err: err}
+		select {
+		case item.resp <- queryResult{err: err}:
+		default:
+		}
 	case requestQueryCommand:
-		item.resp <- requestQueryResult{err: err}
+		select {
+		case item.resp <- requestQueryResult{err: err}:
+		default:
+		}
 	case preferencesQueryCommand:
-		item.resp <- preferencesResult{err: err}
+		select {
+		case item.resp <- preferencesResult{err: err}:
+		default:
+		}
 	case savePreferencesCommand:
-		item.resp <- preferencesResult{err: err}
+		select {
+		case item.resp <- preferencesResult{err: err}:
+		default:
+		}
 	case labelQueryCommand:
-		item.resp <- labelQueryResult{err: err}
+		select {
+		case item.resp <- labelQueryResult{err: err}:
+		default:
+		}
 	case labelSetCommand:
-		item.resp <- err
+		select {
+		case item.resp <- err:
+		default:
+		}
 	case apiKeyResolveCommand:
-		item.resp <- apiKeyResolveResult{err: err}
+		select {
+		case item.resp <- apiKeyResolveResult{err: err}:
+		default:
+		}
 	case priceQueryCommand:
-		item.resp <- priceQueryResult{err: err}
+		select {
+		case item.resp <- priceQueryResult{err: err}:
+		default:
+		}
 	case savePricesCommand:
-		item.resp <- priceQueryResult{err: err}
+		select {
+		case item.resp <- priceQueryResult{err: err}:
+		default:
+		}
 	case syncPricesCommand:
-		item.resp <- priceQueryResult{err: err}
+		select {
+		case item.resp <- priceQueryResult{err: err}:
+		default:
+		}
 	case observedModelsCommand:
-		item.resp <- observedModelsResult{err: err}
+		select {
+		case item.resp <- observedModelsResult{err: err}:
+		default:
+		}
 	case costSnapshotCommand:
-		item.resp <- costSnapshotResult{err: err}
+		select {
+		case item.resp <- costSnapshotResult{err: err}:
+		default:
+		}
 	case resetCommand:
-		item.resp <- resetResult{err: err}
+		select {
+		case item.resp <- resetResult{err: err}:
+		default:
+		}
 	case configCommand:
-		item.resp <- configResult{err: err}
+		select {
+		case item.resp <- configResult{err: err}:
+		default:
+		}
 	case backupCommand:
-		item.resp <- backupResult{err: err}
+		select {
+		case item.resp <- backupResult{err: err}:
+		default:
+		}
 	case restoreCommand:
-		item.resp <- restoreResult{err: err}
+		select {
+		case item.resp <- restoreResult{err: err}:
+		default:
+		}
 	case closeCommand:
 		// Nothing to flush and no handle to close: release the waiter.
-		item.resp <- nil
-		return
+		select {
+		case item.resp <- nil:
+		default:
+		}
 	}
 }
 

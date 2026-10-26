@@ -4,18 +4,18 @@ import { execSync } from 'child_process';
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright-core');
 
-const helpersURL = pathToFileURL('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/test/helpers.mjs').href;
+const helpersURL = pathToFileURL('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/test/helpers.mjs').href;
 const { readDashboardFile, startDashboardServer } = await import(helpersURL);
 
-const htmlPath = 'D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/internal/plugin/web/dashboard.html';
-const outDir = 'D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/design-preview/final';
+const htmlPath = 'D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/internal/plugin/web/dashboard.html';
+const outDir = 'D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/design-preview/final';
 const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 
 const html = (await readDashboardFile(htmlPath)).toString().replace('/*LOCALE_PLACEHOLDER*/', JSON.stringify({
-  'zh-CN': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/internal/plugin/web/locales/zh-CN.json', 'utf-8')),
-  'zh-TW': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/internal/plugin/web/locales/zh-TW.json', 'utf-8')),
-  en: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/internal/plugin/web/locales/en.json', 'utf-8')),
-  ru: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/internal/plugin/web/locales/ru.json', 'utf-8')),
+  'zh-CN': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/internal/plugin/web/locales/zh-CN.json', 'utf-8')),
+  'zh-TW': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/internal/plugin/web/locales/zh-TW.json', 'utf-8')),
+  en: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/internal/plugin/web/locales/en.json', 'utf-8')),
+  ru: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/internal/plugin/web/locales/ru.json', 'utf-8')),
 }));
 
 const server = startDashboardServer({ dashboardHTML: html, pluginId: 'test' });
@@ -24,6 +24,7 @@ const browser = await chromium.launch({ executablePath: chrome, headless: true }
 const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1280, height: 950 }, deviceScaleFactor: 2 });
 await context.addInitScript(() => { sessionStorage.setItem('tokens-statistic-key', 'final-key'); });
 const page = await context.newPage();
+page.setDefaultTimeout(20000);
 const pageErrors = [];
 page.on('pageerror', (error) => pageErrors.push(String(error)));
 
@@ -73,7 +74,7 @@ for (let i = 0; i < 16; i++) {
   await page.screenshot({ path: `C:/Users/LEGION/AppData/Local/Temp/vid/fb${String(i).padStart(2, '0')}.png`, clip: scrub });
   await page.waitForTimeout(220);
 }
-execSync('ffmpeg -y -loglevel error -framerate 5 -i C:/Users/LEGION/AppData/Local/Temp/vid/fb%02d.png -vf "split[a][b];[a]palettegen[p];[b][p]paletteuse" -loop 0 "D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.2.3/design-preview/final/bubbles15.gif"', { stdio: 'inherit' });
+execSync('ffmpeg -y -loglevel error -framerate 5 -i C:/Users/LEGION/AppData/Local/Temp/vid/fb%02d.png -vf "split[a][b];[a]palettegen[p];[b][p]paletteuse" -loop 0 "D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.2/design-preview/final/bubbles15.gif"', { stdio: 'inherit' });
 
 // 6. narrow 600
 await page.setViewportSize({ width: 600, height: 950 });
