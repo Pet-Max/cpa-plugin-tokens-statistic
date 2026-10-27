@@ -138,8 +138,8 @@ try {
       trackWidth: track ? track.getBoundingClientRect().width : -2,
     };
   });
-  check('capsule bubble count unchanged (15)', bubbles.count === 15, String(bubbles.count));
-  check('all bubbles keep the flow animation', bubbles.animated === 15, String(bubbles.animated));
+  check('capsule bubble count unchanged (20)', bubbles.count === 20, String(bubbles.count));
+  check('all bubbles keep the flow animation', bubbles.animated === 20, String(bubbles.animated));
   check('fill covers the full track (no gray tail)', Math.abs(bubbles.fillWidth - bubbles.trackWidth) < 1, `fill ${bubbles.fillWidth} vs track ${bubbles.trackWidth}`);
   await shoot('health-capsule-dot.png');
 
