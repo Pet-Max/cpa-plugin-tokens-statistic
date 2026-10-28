@@ -3,18 +3,18 @@ import { pathToFileURL } from 'url';
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright-core');
 
-const helpersURL = pathToFileURL('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.3/test/helpers.mjs').href;
+const helpersURL = pathToFileURL('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.4/test/helpers.mjs').href;
 const { readDashboardFile, startDashboardServer, healthFixtures } = await import(helpersURL);
 
-const htmlPath = 'D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.3/internal/plugin/web/dashboard.html';
+const htmlPath = 'D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.4/internal/plugin/web/dashboard.html';
 const outDir = 'C:/Users/LEGION/AppData/Local/Temp/hp-preview/shots';
 const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 
 const html = (await readDashboardFile(htmlPath)).toString().replace('/*LOCALE_PLACEHOLDER*/', JSON.stringify({
-  'zh-CN': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.3/internal/plugin/web/locales/zh-CN.json', 'utf-8')),
-  'zh-TW': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.3/internal/plugin/web/locales/zh-TW.json', 'utf-8')),
-  en: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.3/internal/plugin/web/locales/en.json', 'utf-8')),
-  ru: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.3/internal/plugin/web/locales/ru.json', 'utf-8')),
+  'zh-CN': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.4/internal/plugin/web/locales/zh-CN.json', 'utf-8')),
+  'zh-TW': JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.4/internal/plugin/web/locales/zh-TW.json', 'utf-8')),
+  en: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.4/internal/plugin/web/locales/en.json', 'utf-8')),
+  ru: JSON.parse((await import('fs')).readFileSync('D:/Claude/Tokens 用量统计/cpa-plugin-tokens-statistic/tokens-statistic-v0.3.4/internal/plugin/web/locales/ru.json', 'utf-8')),
 }));
 
 const server = startDashboardServer({ dashboardHTML: html, pluginId: 'test' });
@@ -52,7 +52,7 @@ check('degraded day bucket dot present', await page.locator('.health-dots[data-w
 check('two-line subtitle without filters', !(await page.locator('#healthScope').isHidden()) && (await page.locator('#healthScope').textContent()).includes('24') && (await page.locator('#healthScope').textContent()).includes('时间范围'));
 check('bottom range note removed', (await page.locator('#healthRangeNote').count()) === 0);
 check('legacy scrubber chrome removed', await page.evaluate(() => !document.getElementById('healthRange') && !document.getElementById('healthRead') && !document.getElementById('healthLatestButton')));
-check('hero bubbles = 20', await page.locator('#healthFill b').count() === 20);
+check('hero bubbles = 30', await page.locator('#healthFill b').count() === 30);
 const dotWidths = await page.evaluate(() => Array.from(document.querySelectorAll('.health-dots[data-window="recent"] .health-dot')).map((el) => el.getBoundingClientRect().width));
 check('capsules stretch evenly (>=30px @1280)', dotWidths.every((w) => w >= 30) && Math.max(...dotWidths) - Math.min(...dotWidths) < 1.5);
 const alignCheck = await page.evaluate(() => {

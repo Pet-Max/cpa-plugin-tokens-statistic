@@ -106,7 +106,7 @@ Or call go build directly (Linux amd64 shown):
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
   CC="zig cc -target x86_64-linux-gnu" \
   go build -buildmode=c-shared -trimpath -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.3.3" \
+  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.3.4" \
   -o tokens-statistic.so .
 ```
 
@@ -114,7 +114,7 @@ Artifacts:
 
 - Raw dynamic libraries land in `dist/`;
 - Store-conformant release packages (`tokens-statistic_<version>_<platform>.zip` + `checksums.txt`) land in `dist/release/v<version>/`, matching the assets CI publishes on releases;
-- Override the version with `VERSION`, e.g. `VERSION=v0.3.3 bash scripts/build-linux-amd64.sh`.
+- Override the version with `VERSION`, e.g. `VERSION=v0.3.4 bash scripts/build-linux-amd64.sh`.
 
 Tests:
 

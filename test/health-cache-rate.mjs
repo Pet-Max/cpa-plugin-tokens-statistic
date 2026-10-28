@@ -119,9 +119,10 @@ try {
   console.log(`info: day slot 10 accounting-aware 25.00% vs old blended ${oldBucket.toFixed(1)}% (numerator=${bucket.cache_rate_numerator} denominator=${bucket.cache_rate_denominator})`);
   await shoot('health-bucket-cache-rate.png');
 
-  // Capsule decorations (same panel): every bubble flows, and the fill covers
-  // the full track so no gray tail remnant shows at the right end. The fill's
-  // width has a 0.6s transition on first paint, so wait for it to settle.
+  // Capsule particles (same panel): the assertions below count the bubbles and
+  // check each runs the flow animation; the fill must cover the full track so
+  // no gray tail remnant shows at the right end. The fill's width transitions
+  // on first paint, so wait for it to settle.
   await page.waitForFunction(() => {
     const fill = document.getElementById('healthFill');
     const track = document.querySelector('.health-track');
@@ -138,8 +139,8 @@ try {
       trackWidth: track ? track.getBoundingClientRect().width : -2,
     };
   });
-  check('capsule bubble count unchanged (20)', bubbles.count === 20, String(bubbles.count));
-  check('all bubbles keep the flow animation', bubbles.animated === 20, String(bubbles.animated));
+  check('capsule bubble count unchanged (30)', bubbles.count === 30, String(bubbles.count));
+  check('all bubbles keep the flow animation', bubbles.animated === 30, String(bubbles.animated));
   check('fill covers the full track (no gray tail)', Math.abs(bubbles.fillWidth - bubbles.trackWidth) < 1, `fill ${bubbles.fillWidth} vs track ${bubbles.trackWidth}`);
   await shoot('health-capsule-dot.png');
 
