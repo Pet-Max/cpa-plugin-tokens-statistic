@@ -181,6 +181,10 @@ try {
   // menu is open.
   await page.locator('#apiKeyFilterButton').click();
   await page.waitForFunction(() => document.getElementById('apiKeyFilterButton').getAttribute('aria-expanded') === 'true', null, { timeout: 5000 });
+  // The caret flips via a 160ms transform transition, so wait for the settled
+  // end-state matrix before asserting; the aria-expanded attribute alone flips
+  // synchronously and can race the transition.
+  await page.waitForFunction(() => document.querySelector('.apikey-filter-caret') && getComputedStyle(document.querySelector('.apikey-filter-caret')).transform.includes('-0.7071'), null, { timeout: 5000 });
   const caret = await page.evaluate(() => {
     const node = document.querySelector('.apikey-filter-caret');
     return { width: getComputedStyle(node).width, transform: getComputedStyle(node).transform };
