@@ -310,6 +310,17 @@ html[data-i18n-pending] #appView,html[data-i18n-pending] #authView{visibility:hi
   .health-fill b:nth-of-type(29){right:89.5%;top:59.9%;width:3px;height:3px;animation-delay:.15s;animation-duration:3.6s}
   .health-fill b:nth-of-type(30){right:94.5%;top:29.3%;width:3px;height:3px;animation-delay:2.55s;animation-duration:3.2s}
   @keyframes hp-flow{0%{transform:translateX(26px);opacity:0}6%{opacity:.95}75%{opacity:.55}100%{transform:translateX(-260px);opacity:0}}
+  /* Per-status capsule motion: traffic thins and slows as success rate drops.
+     Must stay after the nth-of-type rules above; these selectors tie on specificity and win on source order. */
+  .health-fill.is-warn b{background:radial-gradient(circle at 40% 35%,rgba(80,48,5,.95),rgba(80,48,5,.35));animation-name:hp-flow;animation-duration:6.8s;animation-timing-function:linear;animation-iteration-count:infinite}
+  .health-fill.is-warn b:nth-of-type(2n){display:none}
+  .health-fill.is-warn i{opacity:.5;background-image:radial-gradient(circle 1.3px at 8% 35%,#503005 60%,transparent),radial-gradient(circle 1px at 16% 68%,#503005 60%,transparent),radial-gradient(circle 1.5px at 27% 30%,#503005 60%,transparent),radial-gradient(circle 1px at 36% 62%,#503005 60%,transparent),radial-gradient(circle 1.2px at 47% 38%,#503005 60%,transparent),radial-gradient(circle 1px at 57% 70%,#503005 60%,transparent),radial-gradient(circle 1.5px at 68% 30%,#503005 60%,transparent),radial-gradient(circle 1px at 78% 58%,#503005 60%,transparent),radial-gradient(circle 1.4px at 88% 34%,#503005 60%,transparent)}
+  .health-fill.is-bad b{display:none;background:radial-gradient(circle at 40% 35%,rgba(74,14,6,.95),rgba(74,14,6,.4));animation-name:hp-flow;animation-duration:9.6s;animation-timing-function:linear;animation-iteration-count:infinite}
+  .health-fill.is-bad b:nth-of-type(4n+1){display:block}
+  .health-fill.is-bad i{opacity:.4;background-image:radial-gradient(circle 1.3px at 8% 35%,#4a0e06 60%,transparent),radial-gradient(circle 1px at 16% 68%,#4a0e06 60%,transparent),radial-gradient(circle 1.5px at 27% 30%,#4a0e06 60%,transparent),radial-gradient(circle 1px at 36% 62%,#4a0e06 60%,transparent),radial-gradient(circle 1.2px at 47% 38%,#4a0e06 60%,transparent),radial-gradient(circle 1px at 57% 70%,#4a0e06 60%,transparent),radial-gradient(circle 1.5px at 68% 30%,#4a0e06 60%,transparent),radial-gradient(circle 1px at 78% 58%,#4a0e06 60%,transparent),radial-gradient(circle 1.4px at 88% 34%,#4a0e06 60%,transparent)}
+  .health-fill.is-bad{animation:hp-breath 3.2s ease-in-out infinite}
+  .health-fill.is-empty i,.health-fill.is-empty b{display:none}
+  @keyframes hp-breath{0%,100%{filter:brightness(1)}50%{filter:brightness(1.22)}}
   .health-legend{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-tertiary);flex-wrap:wrap;margin-top:8px}
 .health-legend-item{display:inline-flex;align-items:center;gap:4px}
 .health-legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
