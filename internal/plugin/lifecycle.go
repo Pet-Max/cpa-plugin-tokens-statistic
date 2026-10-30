@@ -18,7 +18,7 @@ import (
 
 // version is set at build time with:
 // -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=<version>
-var version = "0.3.6"
+var version = "0.3.7"
 
 // maxSupportedRPCSchema is intentionally independent from the SDK's latest
 // schema. Future hosts may negotiate down to this verified contract without
@@ -265,7 +265,8 @@ func pluginRegistration(schemaVersion uint32) registration {
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "db", Type: pluginapi.ConfigFieldTypeString, Description: "bbolt 数据库文件的存放路径。留空时自动使用插件目录旁的数据目录（文件名 tokens-statistic.db）；若手动填写相对路径，则相对于 CLIProxyAPI 的工作目录解析。一般保持留空即可。"},
 				{Name: "retention", Type: pluginapi.ConfigFieldTypeInteger, Description: "分钟级统计与请求明细在数据库中的保留天数，超过保留期的数据会被自动清理；可选 1-3650 天，默认 365。"},
-				{Name: "health", Type: pluginapi.ConfigFieldTypeString, Description: "服务健康面板的成功率阈值，YAML 对象：warn 为降级线（成功率低于它标黄，默认 95），crit 为异常线（低于它标红，默认 80）；二者均为 0-100 且 warn 必须大于 crit。示例：\nhealth:\n  warn: 95\n  crit: 80"},
+				{Name: "health_warn", Type: pluginapi.ConfigFieldTypeInteger, Description: "服务健康面板的降级阈值：成功率低于该值标黄（降级）。取值 0-100，必须大于 health_crit，默认 95。"},
+				{Name: "health_crit", Type: pluginapi.ConfigFieldTypeInteger, Description: "服务健康面板的异常阈值：成功率低于该值标红（异常）。取值 0-100，必须小于 health_warn，默认 80。"},
 				{Name: "flush", Type: pluginapi.ConfigFieldTypeString, Description: "用量数据批量写入数据库的间隔，例如 5s，允许 1s-1h；等待期间攒满 100 条记录也会立即写入一批。留空表示每条用量记录到达后立即提交。"},
 				{Name: "secret", Type: pluginapi.ConfigFieldTypeString, Description: "用于加密 API Key 并计算其指纹的密钥。默认值 123456 仅建议在本地测试时使用；公开部署请设置至少 32 字节的自定义随机值，防止数据库文件泄露后 API Key 被还原。留空将完全禁用 API Key 追踪。修改此值会开启新的加密代数，历史记录仍会保留。"},
 			},

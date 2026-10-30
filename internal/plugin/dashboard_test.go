@@ -522,13 +522,13 @@ func TestDashboardDimensionCostSortContract(t *testing.T) {
 func TestDashboardAnalysisSeriesRenderContract(t *testing.T) {
 	publicHTML := dashboardHTML
 	for _, required := range []string{
-		// requests render as bottom bars on their own scale
+		// requests render as bottom bars on their own scale, empty buckets stay bare
 		`if(metric.key==='requests'){var barBase=top+plotH,barZone=plotH*0.2,barStride=Math.max(1,Math.ceil(3/slot));`,
 		`c1y=Math.max(lo,Math.min(hi,p1.y+(p2.y-p0.y)/6)),c2y=Math.max(lo,Math.min(hi,p2.y-(p3.y-p1.y)/6))`,
 		`svgNode('rect',{x:left,y:top-2,width:plotW,height:plotH+4})`,
-		`.analysis-bar{fill:var(--metric-requests);opacity:.85}`,
-		// token series: straight 2px lines; durations keep smooth 2.5px; ratios stay dashed
-		`function linePath(points)`,
+		`.analysis-bar{fill:var(--metric-requests);opacity:.8}`,
+		// token series: smoothed 2px lines over a bg halo; durations keep smooth 2.5px; ratios stay dashed
+		`function analysisSegments(list)`,
 		`class:'analysis-line'+(metric.kind==='percent'?' percent':(metric.kind==='count'?' count':''))`,
 		`.analysis-line.count{stroke-width:2}`,
 		// latency recolored to violet in both themes
@@ -546,7 +546,8 @@ func TestDashboardAnalysisSeriesRenderContract(t *testing.T) {
 	// the public variant strips the export script section)
 	for _, required := range []string{
 		`if(metric.key==='requests'){var barZone=chartH*0.2;`,
-		`ctx.lineWidth=metric.kind==='percent'?2:(metric.kind==='count'?2:2.5);`,
+		`var lineWidth=metric.kind==='percent'?2:(metric.kind==='count'?2:2.5);`,
+		`function canvasSmooth(ctx,pts)`,
 	} {
 		if !strings.Contains(dashboardHTML, required) {
 			t.Fatalf("full dashboard missing analysis export render contract %q", required)

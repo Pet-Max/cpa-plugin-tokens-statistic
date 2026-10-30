@@ -34,14 +34,19 @@ type Config struct {
 	HealthCrit          int
 }
 
-// configYAML is the small user-facing surface: db, retention, flush and secret.
-// Compression knobs and the batch size stay internal.
+// configYAML is the small user-facing surface: db, retention, flush, secret and
+// the health thresholds. The thresholds accept both the flat top-level keys the
+// management center writes (health_warn / health_crit) and the legacy nested
+// health block; explicit flat keys win. Compression knobs and the batch size
+// stay internal.
 type configYAML struct {
 	DataPath     string      `yaml:"db"`
 	Retention    *int        `yaml:"retention"`
 	Flush        string      `yaml:"flush"`
 	APIKeySecret *string     `yaml:"secret"`
 	Health       *healthYAML `yaml:"health"`
+	HealthWarn   *int        `yaml:"health_warn"`
+	HealthCrit   *int        `yaml:"health_crit"`
 }
 
 // healthYAML holds the success-rate thresholds of the dashboard health panel.
@@ -99,6 +104,12 @@ func Parse(raw []byte) (Config, error) {
 		if input.Health.Crit != nil {
 			cfg.HealthCrit = *input.Health.Crit
 		}
+	}
+	if input.HealthWarn != nil {
+		cfg.HealthWarn = *input.HealthWarn
+	}
+	if input.HealthCrit != nil {
+		cfg.HealthCrit = *input.HealthCrit
 	}
 	return normalizeConfig(cfg)
 }

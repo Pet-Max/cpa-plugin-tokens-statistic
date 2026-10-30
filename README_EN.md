@@ -68,6 +68,8 @@ plugins:
       retention: 365    # days to keep per-minute aggregates and request details (1–3650); default 365
       flush: 5s         # batch write interval (1s–1h). Recommended for small hosts (NAS / SD-card, write-sensitive devices); omit the line to commit per record (default)
       secret: "123456"  # API-key encryption key. 123456 is the default (local testing only); use a random value of at least 32 bytes in production
+      # health_warn: 95  # service-health degraded threshold: success rate below 95 turns yellow (degraded), default 95
+      # health_crit: 80  # service-health error threshold: success rate below 80 turns red (error), default 80
 ```
 
 4. Field reference:
@@ -78,6 +80,7 @@ plugins:
 | `retention` | `365` | Days to keep per-minute aggregates and request details (1–3650), cleaned up automatically |
 | `flush` | empty | Empty commits every record immediately; set an interval for batch writes (1s–1h). 5s is recommended for small hosts or high-traffic setups; bursts are absorbed by the internal 100-record batch cap |
 | `secret` | `123456` | API-key encryption and fingerprint key; custom values need at least 32 bytes. Must be changed for public deployments; empty disables API-key tracking |
+| `health_warn` / `health_crit` | `95` / `80` | Service-health success-rate thresholds: success rate below health_warn turns yellow (degraded), below health_crit turns red (error). Both 0–100 and health_warn must be greater than health_crit |
 
 ## Build
 
@@ -106,7 +109,7 @@ Or call go build directly (Linux amd64 shown):
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
   CC="zig cc -target x86_64-linux-gnu" \
   go build -buildmode=c-shared -trimpath -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.3.6" \
+  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.3.7" \
   -o tokens-statistic.so .
 ```
 
@@ -114,7 +117,7 @@ Artifacts:
 
 - Raw dynamic libraries land in `dist/`;
 - Store-conformant release packages (`tokens-statistic_<version>_<platform>.zip` + `checksums.txt`) land in `dist/release/v<version>/`, matching the assets CI publishes on releases;
-- Override the version with `VERSION`, e.g. `VERSION=v0.3.6 bash scripts/build-linux-amd64.sh`.
+- Override the version with `VERSION`, e.g. `VERSION=v0.3.7 bash scripts/build-linux-amd64.sh`.
 
 Tests:
 
