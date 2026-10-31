@@ -1,8 +1,7 @@
-name: Build
+name: Release
 
 on:
   push:
-    branches: [ "**" ]
     tags: [ "v*" ]
   workflow_dispatch:
     inputs:
@@ -98,10 +97,6 @@ jobs:
             elif [[ "$INPUT_RELEASE" == "true" ]]; then
               publish=true
             fi
-          else
-            version="$(next_patch_version)-alpha.${GITHUB_RUN_NUMBER}"
-            publish=true
-            prerelease=true
           fi
 
           if [[ ! "$version" =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
