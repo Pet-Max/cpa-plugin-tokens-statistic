@@ -10,27 +10,8 @@
 
 Tokens Statistic is a usage-statistics plugin for [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI). Once installed, the Management Center gains a "Tokens Statistic" page: every model call is recorded with its model, token counts, latency, outcome and cache hits, presented as trend charts and detail tables for any time range. All data stays in a local database — nothing is uploaded.
 
-## Screenshots
-
-**Metric cards**
-
-![Metric cards](images/en/dashboard-cards.png)
-
-**Service health**
-
-![Service health](images/en/dashboard-health.png)
-
-| Tokens analysis | Request details |
-|:-:|:-:|
-| ![Tokens analysis](images/en/dashboard-analysis.png) | ![Request details](images/en/dashboard-requests.png) |
-
-**Model details**
-
-![Model details](images/en/dashboard-dimensions.png)
-
-**Model pricing & sync**
-
-![Model pricing and sync](images/en/dashboard-pricing.png)
+<p align="center"><img src="images/desktop/en/dashboard-cards.png" width="720" alt="Metric cards"></p>
+<p align="center">📸 <a href="preview.md#english">Preview</a> (Metric cards · Service health · Tokens analysis · Request details · Model details · Pricing & sync)</p>
 
 ## Features
 
@@ -39,37 +20,33 @@ Tokens Statistic is a usage-statistics plugin for [CLIProxyAPI](https://github.c
 - Summary cards, trend charts, dimension tables and per-request detail
 - Time ranges: today, last 5 hours / 7 days / 30 days, current month, custom
 - Trend aggregation from minute to month, wheel zoom and pan
-- Table pagination, sorting and persisted column preferences
-- Filter by multiple API keys (union), key labels
-- Token unit toggle (full / K / M / B), persisted
-- Estimated-cost ￥/$ toggle, persisted
+- Table pagination, sorting and column preferences, token unit and currency toggles all persisted
+- Filter by multiple API keys (union) and key labels
 - Follows the Management Center theme and browser language; Simplified Chinese, Traditional Chinese, English and Russian built in
 - Single-file plugin for Linux, Mac and Windows
 
 ## Deployment
 
-### Method 1 (recommended):
+**Method 1 (recommended)**: one-click install from the CPA plugin store inside the Management Center.
 
-One-click install from the CPA plugin store inside the Management Center.
-
-### Method 2:
+**Method 2**:
 
 1. Download the zip for your platform from [Releases](https://github.com/Pet-Max/cpa-plugin-tokens-statistic/releases) and extract the dynamic library.
 2. Place the library under `plugins/<os>/<arch>/` in your CLIProxyAPI directory.
-3. Configure it in CLIProxyAPI's config.yaml:
+3. Configure it in CLIProxyAPI's config.yaml (`enabled` is required — the host does not load plugins that are not explicitly enabled):
 
 ```yaml
 plugins:
   enabled: true
   configs:
     tokens-statistic:
-      enabled: true     # required: the host does not load plugins that are not explicitly enabled
-      db: data/tokens-statistic.db   # database path (relative to the CLIProxyAPI working directory); default <CLIProxyAPI dir>/data/tokens-statistic.db
-      retention: 365    # days to keep per-minute aggregates and request details (1–3650); default 365
-      flush: 5s         # batch write interval (1s–1h). Recommended for small hosts (NAS / SD-card, write-sensitive devices); omit the line to commit per record (default)
-      secret: "123456"  # API-key encryption key. 123456 is the default (local testing only); use a random value of at least 32 bytes in production
-      # health_warn: 95  # service-health degraded threshold: success rate below 95 turns yellow (degraded), default 95
-      # health_crit: 80  # service-health error threshold: success rate below 80 turns red (error), default 80
+      enabled: true
+      db: data/tokens-statistic.db   # database path, default <CLIProxyAPI dir>/data/tokens-statistic.db
+      retention: 365                 # days to keep aggregates and request details (1–3650), default 365
+      flush: 5s                      # batch write interval (1s–1h); omit the line to commit per record
+      secret: "123456"               # API-key encryption key; use a random value of at least 32 bytes in production
+      # health_warn: 95              # degraded threshold, default 95
+      # health_crit: 80              # error threshold, default 80
 ```
 
 4. Field reference:
@@ -84,18 +61,7 @@ plugins:
 
 ## Build
 
-There are two paths: **local builds** are for testing on your own machine, and **CI release builds** are for publishing.
-
-| | Local build | CI release build |
-|:--|:--|:--|
-| Platforms | 4 (Windows, Linux × amd64/arm64) | 6 (adds macOS amd64/arm64) |
-| Trigger | Run the scripts in `scripts/` manually | Automatically on pushing a `v*` tag |
-| Where artifacts go | Stay in local `dist/`, never committed or uploaded | Attached to the GitHub Release automatically |
-| Purpose | Local verification and real-machine smoke tests | Official releases for users to download |
-
-### Local builds (4 platforms, for local testing)
-
-Requirements: Go 1.26+, `CGO_ENABLED=1`; [zig](https://zig.dev) is the recommended cross compiler, MinGW-w64 works for Windows and aarch64-linux-gnu-gcc for Linux arm64.
+Local builds run the scripts in `scripts/` (4 platforms, artifacts stay in local `dist/` and are never committed). Releases are published by the repository maintainer: pushing a `v*` tag builds 6 platforms (including macOS) and creates a stable Release automatically. Requirements: Go 1.26+ and `CGO_ENABLED=1`; [zig](https://zig.dev) is the recommended cross compiler (MinGW-w64 works for Windows, aarch64-linux-gnu-gcc for Linux arm64).
 
 | Platform | Command |
 |---|---|
@@ -103,43 +69,15 @@ Requirements: Go 1.26+, `CGO_ENABLED=1`; [zig](https://zig.dev) is the recommend
 | Linux arm64 | `bash scripts/build-linux-arm64.sh` |
 | Windows amd64 / arm64 | `powershell -ExecutionPolicy Bypass -File scripts/build_dll.ps1` |
 
-Or call go build directly (Linux amd64 shown):
-
-```bash
-CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-  CC="zig cc -target x86_64-linux-gnu" \
-  go build -buildmode=c-shared -trimpath -buildvcs=false \
-  -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=v0.3.7" \
-  -o tokens-statistic.so .
-```
-
-Artifacts:
-
-- Raw dynamic libraries land in `dist/`;
-- Store-conformant release packages (`tokens-statistic_<version>_<platform>.zip` + `checksums.txt`) land in `dist/release/v<version>/`, matching the assets CI publishes on releases;
-- Override the version with `VERSION`, e.g. `VERSION=v0.3.7 bash scripts/build-linux-amd64.sh`.
-
-Tests:
-
-```bash
-gofmt -w *.go
-go vet ./...
-go test -count=1 ./...
-```
-
-Optional browser regression tests need Node, Chrome/Edge and playwright-core (`npm ci`), plus `CHROME_PATH` pointing at the browser; they skip automatically when any of these is missing.
-
-### CI release builds (6 platforms, auto-published on tag push)
-
-Pushing a `v*` tag makes CI compile all six platforms on GitHub's build servers, generate checksums.txt and create the Release automatically.
+- Artifacts: raw dynamic libraries land in `dist/`; store-conformant release packages (`tokens-statistic_<version>_<platform>.zip` + `checksums.txt`) land in `dist/release/v<version>/`, matching the assets CI publishes on releases; override the version with `VERSION`.
+- Tests: `gofmt -w *.go && go vet ./... && go test -count=1 ./...`; optional browser regression tests need Node, Chrome/Edge and playwright-core (`npm ci`), plus `CHROME_PATH` pointing at the browser; they skip automatically when any of these is missing.
 
 ## Privacy and Security
 
 - No prompts, request bodies or response bodies are stored — only the metadata and counters needed for statistics
 - API keys are stored encrypted with keyed fingerprints; plaintext is served on demand only through management routes that require the CLIProxyAPI management key, never embedded in static page content, logs or browser storage
 - Dashboard data and every management operation are protected by the CLIProxyAPI management key: opening the dashboard inside the Management Center reuses the signed-in identity automatically, while standalone access asks for the management key once (kept only for the current tab, invalidated as soon as it closes)
-- The default `secret` (123456) is for local testing only; use a random value of at least 32 bytes for public deployments. Rotating `secret` preserves historical ciphertext but it can no longer be revealed
-- Leaving `secret` empty disables API-key tracking entirely
+- The default `secret` (123456) is for local testing only; use a random value of at least 32 bytes for public deployments. Rotating `secret` preserves historical ciphertext but it can no longer be revealed, and leaving `secret` empty disables API-key tracking entirely
 
 ## Acknowledgements
 
