@@ -7,7 +7,12 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DIST_DIR="$ROOT_DIR/dist"
 VERSION=${VERSION:-v0.3.7}
 PLUGIN_ID=${PLUGIN_ID:-tokens-statistic}
-RELEASE_ARTIFACT="$DIST_DIR/${PLUGIN_ID}-${VERSION}-linux-arm64.so"
+# Bare artifacts are staged in a temp dir and discarded after packaging;
+# only the store-conformant release packages land in dist/.
+STAGE=""
+trap 'if [ -n "$STAGE" ]; then rm -rf "$STAGE"; fi' EXIT
+STAGE=$(mktemp -d)
+RELEASE_ARTIFACT="$STAGE/${PLUGIN_ID}-${VERSION}-linux-arm64.so"
 
 # Optional: set CLASH_PROXY_URL (or the standard *_PROXY variables) to route module
 # downloads through a local proxy. By default the ambient environment applies.

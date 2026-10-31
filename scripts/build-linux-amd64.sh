@@ -30,11 +30,16 @@ fi
 
 mkdir -p "$GOPATH"
 mkdir -p "$DIST_DIR"
+# Bare artifacts are staged in a temp dir and discarded after packaging;
+# only the store-conformant release packages land in dist/.
+STAGE=""
+trap 'if [ -n "$STAGE" ]; then rm -rf "$STAGE"; fi' EXIT
+STAGE=$(mktemp -d)
 cd "$ROOT_DIR"
 go build -buildmode=c-shared -trimpath -buildvcs=false \
   -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=${VERSION#v}" \
-  -o "$DIST_DIR/${PLUGIN_ID}-${VERSION}.so" .
-echo "built $DIST_DIR/${PLUGIN_ID}-${VERSION}.so"
+  -o "$STAGE/${PLUGIN_ID}-${VERSION}.so" .
+echo "built (staging) $STAGE/${PLUGIN_ID}-${VERSION}.so"
 
 # Package the store-conformant release zip: tokens-statistic_<version without v>_<goos>_<goarch>.zip
 # with the library at the zip root, plus a checksums.txt for every zip in the release dir.
@@ -56,6 +61,6 @@ PY
     exit 1
   fi
 }
-package_zip "$RELEASE_DIR/${PLUGIN_ID}_${RELEASE_VERSION}_linux_amd64.zip" "$DIST_DIR/${PLUGIN_ID}-${VERSION}.so"
+package_zip "$RELEASE_DIR/${PLUGIN_ID}_${RELEASE_VERSION}_linux_amd64.zip" "$STAGE/${PLUGIN_ID}-${VERSION}.so"
 ( cd "$RELEASE_DIR" && sha256sum -t -- *.zip > checksums.txt )
 echo "release package: $RELEASE_DIR/${PLUGIN_ID}_${RELEASE_VERSION}_linux_amd64.zip"

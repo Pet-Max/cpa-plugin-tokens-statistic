@@ -69,7 +69,7 @@ Local builds run the scripts in `scripts/` (4 platforms, artifacts stay in local
 | Linux arm64 | `bash scripts/build-linux-arm64.sh` |
 | Windows amd64 / arm64 | `powershell -ExecutionPolicy Bypass -File scripts/build_dll.ps1` |
 
-- Artifacts: raw dynamic libraries land in `dist/`; store-conformant release packages (`tokens-statistic_<version>_<platform>.zip` + `checksums.txt`) land in `dist/release/v<version>/`, matching the assets CI publishes on releases; override the version with `VERSION`.
+- Artifacts: written to `dist/release/v<version>/` (`tokens-statistic_<version>_<platform>.zip` + `checksums.txt`, matching the assets CI publishes on releases); override the version with `VERSION`.
 - Tests: `gofmt -w *.go && go vet ./... && go test -count=1 ./...`; optional browser regression tests need Node, Chrome/Edge and playwright-core (`npm ci`), plus `CHROME_PATH` pointing at the browser; they skip automatically when any of these is missing.
 
 ## Privacy and Security

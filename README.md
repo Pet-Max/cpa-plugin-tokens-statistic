@@ -73,7 +73,7 @@ plugins:
 | Linux arm64 | `bash scripts/build-linux-arm64.sh` |
 | Windows amd64 / arm64 | `powershell -ExecutionPolicy Bypass -File scripts/build_dll.ps1` |
 
-- 产物：原始动态库输出到 `dist/`；商店规格发布包（`tokens-statistic_<版本>_<平台>.zip` + `checksums.txt`）输出到 `dist/release/v<版本>/`，与 CI Release 资产同规格；版本可用 `VERSION` 覆盖。
+- 产物：输出到 `dist/release/v<版本>/`（`tokens-statistic_<版本>_<平台>.zip` + `checksums.txt`，与 CI Release 资产同规格）；版本可用 `VERSION` 覆盖。
 - 测试：`gofmt -w *.go && go vet ./... && go test -count=1 ./...`；可选的浏览器回归测试需要 Node、Chrome/Edge 与 `npm ci` 安装的 playwright-core 并设置 `CHROME_PATH`，条件不满足时自动跳过。
 
 ## 隐私与安全

@@ -5,6 +5,10 @@ $version = if ($env:VERSION) { $env:VERSION } else { "v0.3.7" }
 # Store assets carry the version without the leading "v" (e.g. tokens-statistic_0.1.0_windows_amd64.zip).
 $releaseVersion = $version.TrimStart("v")
 $releaseDir = Join-Path $rootDir "dist\release\$version"
+# Bare artifacts are staged in a temp dir and discarded after packaging;
+# only the store-conformant release packages land in dist/.
+$stage = Join-Path ([System.IO.Path]::GetTempPath()) ("tokens-statistic-build-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force $stage | Out-Null
 $env:GOOS = "windows"
 $env:CGO_ENABLED = "1"
 $env:Path = "C:\mingw64\mingw64\bin;" + $env:Path
@@ -67,14 +71,14 @@ try {
     New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $rootDir "dist") | Out-Null
 
-    Build-WindowsDll -Arch "amd64" -OutputPath (Join-Path $rootDir "dist\tokens-statistic.dll")
-    Package-Zip -ZipPath (Join-Path $releaseDir "tokens-statistic_${releaseVersion}_windows_amd64.zip") -LibraryPath (Join-Path $rootDir "dist\tokens-statistic.dll")
+    Build-WindowsDll -Arch "amd64" -OutputPath (Join-Path $stage "tokens-statistic.dll")
+    Package-Zip -ZipPath (Join-Path $releaseDir "tokens-statistic_${releaseVersion}_windows_amd64.zip") -LibraryPath (Join-Path $stage "tokens-statistic.dll")
     Write-Host "release package: tokens-statistic_${releaseVersion}_windows_amd64.zip"
 
     # Best effort: windows/arm64 via zig cc. Reported, not fatal, when the toolchain misbehaves.
     try {
-        Build-WindowsDll -Arch "arm64" -OutputPath (Join-Path $rootDir "dist\tokens-statistic-windows-arm64.dll")
-        Package-Zip -ZipPath (Join-Path $releaseDir "tokens-statistic_${releaseVersion}_windows_arm64.zip") -LibraryPath (Join-Path $rootDir "dist\tokens-statistic-windows-arm64.dll")
+        Build-WindowsDll -Arch "arm64" -OutputPath (Join-Path $stage "tokens-statistic-windows-arm64.dll")
+        Package-Zip -ZipPath (Join-Path $releaseDir "tokens-statistic_${releaseVersion}_windows_arm64.zip") -LibraryPath (Join-Path $stage "tokens-statistic-windows-arm64.dll")
         Write-Host "release package: tokens-statistic_${releaseVersion}_windows_arm64.zip"
     }
     catch {
@@ -84,6 +88,7 @@ try {
     Write-Checksums -Directory $releaseDir
     Write-Host "checksums: $(Join-Path $releaseDir 'checksums.txt')"
 }
-finally {
-    Pop-Location
-}
+    finally {
+        Pop-Location
+        Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+    }
