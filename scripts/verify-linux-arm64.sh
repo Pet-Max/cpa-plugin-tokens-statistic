@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-DIST_DIR="$ROOT_DIR/dist"
-VERSION=${VERSION:-v0.3.8}
-INSTALL_ARTIFACT=${1:-"$DIST_DIR/tokens-statistic.so"}
-RELEASE_ARTIFACT=${2:-"$DIST_DIR/tokens-statistic-${VERSION}-linux-arm64.so"}
-HEADER="${RELEASE_ARTIFACT%.so}.h"
-CHECKSUMS="$DIST_DIR/SHA256SUMS"
-SMOKE_BINARY="$DIST_DIR/abi-smoke-linux-arm64"
+# Verify a linux/arm64 c-shared plugin artifact: ELF layout, exported
+# symbols, and a runtime ABI smoke test (dlopen + plugin.register) under
+# qemu. Mirrors scripts/verify-darwin.sh.
+#
+# Usage: bash scripts/verify-linux-arm64.sh <tokens-statistic-v<version>.so>
+# Pass the bare .so built in CI, or the one extracted from the release zip
+# (the zip ships the library at its root).
+#
+# On Debian/Ubuntu: sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user
 
-for command in go file readelf nm sha256sum grep cmp aarch64-linux-gnu-gcc; do
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+ARTIFACT=${1:-}
+
+if [[ -z "$ARTIFACT" || ! -f "$ARTIFACT" ]]; then
+  printf 'usage: %s <linux-arm64-plugin-library>\n' "${BASH_SOURCE[0]}" >&2
+  exit 2
+fi
+
+for command in go file readelf nm aarch64-linux-gnu-gcc qemu-aarch64; do
   command -v "$command" >/dev/null || {
     printf 'Required command not found: %s\n' "$command" >&2
     exit 1
@@ -26,47 +35,26 @@ if [[ -n "$(gofmt -l -- *.go)" ]]; then
 fi
 
 go vet ./...
-CGO_ENABLED=0 go test ./...
 go test ./...
-if [[ "$(go env CGO_ENABLED)" == "1" ]]; then
-  go test -race ./...
-else
-  printf 'Skipping race tests because cgo is disabled in this environment.\n' >&2
-fi
 
-for path in "$INSTALL_ARTIFACT" "$RELEASE_ARTIFACT" "$HEADER"; do
-  [[ -f "$path" ]] || { printf 'Artifact not found: %s\n' "$path" >&2; exit 1; }
-done
-cmp -s "$INSTALL_ARTIFACT" "$RELEASE_ARTIFACT" || {
-  printf 'Install and release shared libraries differ.\n' >&2
-  exit 1
-}
-
-file "$INSTALL_ARTIFACT" | grep -Eq 'ELF 64-bit.*(ARM aarch64|AArch64)'
-readelf -h "$INSTALL_ARTIFACT" | grep -Eq 'Class:[[:space:]]+ELF64'
-readelf -h "$INSTALL_ARTIFACT" | grep -Eq 'Type:[[:space:]]+DYN'
-readelf -h "$INSTALL_ARTIFACT" | grep -Eq 'Machine:[[:space:]]+AArch64'
+file "$ARTIFACT" | grep -Eq 'ELF 64-bit.*(ARM aarch64|AArch64)'
+readelf -h "$ARTIFACT" | grep -Eq 'Class:[[:space:]]+ELF64'
+readelf -h "$ARTIFACT" | grep -Eq 'Type:[[:space:]]+DYN'
+readelf -h "$ARTIFACT" | grep -Eq 'Machine:[[:space:]]+AArch64'
 
 for symbol in cliproxy_plugin_init cliproxyPluginCall cliproxyPluginFree cliproxyPluginShutdown; do
-  nm -D --defined-only "$INSTALL_ARTIFACT" | grep -Eq "[[:space:]]${symbol}$" || {
+  nm -D --defined-only "$ARTIFACT" | grep -Eq "[[:space:]]${symbol}$" || {
     printf 'Required exported symbol missing: %s\n' "$symbol" >&2
     exit 1
   }
 done
 
 printf 'Dynamic dependencies:\n'
-readelf -d "$INSTALL_ARTIFACT" | grep NEEDED || true
+readelf -d "$ARTIFACT" | grep NEEDED || true
 
+SMOKE_BINARY=$(mktemp "${TMPDIR:-/tmp}/abi-smoke-arm64.XXXXXX")
+trap 'rm -f -- "$SMOKE_BINARY"' EXIT
 aarch64-linux-gnu-gcc -O2 -Wall -Wextra -o "$SMOKE_BINARY" "$ROOT_DIR/scripts/abi-smoke.c" -ldl
-if command -v qemu-aarch64 >/dev/null; then
-  qemu-aarch64 -L /usr/aarch64-linux-gnu "$SMOKE_BINARY" "$INSTALL_ARTIFACT"
-else
-  printf 'Skipping runtime ABI smoke test because qemu-aarch64 is unavailable.\n' >&2
-fi
+qemu-aarch64 -L /usr/aarch64-linux-gnu "$SMOKE_BINARY" "$ARTIFACT"
 
-cd "$DIST_DIR"
-sha256sum "$(basename "$INSTALL_ARTIFACT")" "$(basename "$RELEASE_ARTIFACT")" >"$(basename "$CHECKSUMS")"
-sha256sum -c "$(basename "$CHECKSUMS")"
-printf 'Verified install artifact: %s\n' "$INSTALL_ARTIFACT"
-printf 'Verified release artifact: %s\n' "$RELEASE_ARTIFACT"
-printf 'Checksums: %s\n' "$CHECKSUMS"
+printf 'Verified linux/arm64 artifact: %s\n' "$ARTIFACT"

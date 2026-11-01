@@ -328,10 +328,10 @@ jobs:
         with:
           go-version: "1.26"
 
-      - name: Install aarch64 cross-compiler
+      - name: Install aarch64 cross-compiler and qemu
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user
 
       - name: Build .so
         env:
@@ -344,6 +344,9 @@ jobs:
           go build -buildmode=c-shared -trimpath -buildvcs=false \
             -ldflags="-s -w -X github.com/Pet-Max/cpa-plugin-tokens-statistic/internal/plugin.version=${VERSION}" \
             -o "${{ env.PLUGIN_ID }}-v${VERSION}.so" .
+
+      - name: Verify .so under qemu
+        run: bash scripts/verify-linux-arm64.sh "${{ env.PLUGIN_ID }}-v${{ needs.prepare.outputs.version }}.so"
 
       - name: Create zip
         run: |
