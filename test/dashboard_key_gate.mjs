@@ -154,7 +154,7 @@ try {
     throw new Error(`dashboard reported an error after verification: ${errorText}`);
   }
   const remembered = await page.evaluate(() => localStorage.getItem('tokens-statistic-remembered-key') || '');
-  if (!remembered.startsWith('enc::v1::')) {
+  if (!remembered.startsWith('enc::v2::')) {
     throw new Error('ticking remember credentials must store an obfuscated key, got empty or plaintext entry');
   }
 

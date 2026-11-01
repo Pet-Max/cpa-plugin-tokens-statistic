@@ -55,6 +55,9 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Storage format parity check
+        run: node scripts/verify-storage-format.mjs
+
       - name: Race test
         run: go test -race -count=1 ./...
 
