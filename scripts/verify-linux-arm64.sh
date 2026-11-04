@@ -6,8 +6,9 @@ set -euo pipefail
 # qemu. Mirrors scripts/verify-darwin.sh.
 #
 # Usage: bash scripts/verify-linux-arm64.sh <tokens-statistic-v<version>.so>
-# Pass the bare .so built in CI, or the one extracted from the release zip
-# (the zip ships the library at its root).
+# The artifact may be passed as a bare name, a relative or an absolute path;
+# it is resolved to an absolute path below because dlopen treats slash-less
+# names as library sonames and never searches the current directory.
 #
 # On Debian/Ubuntu: sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user
 
@@ -18,6 +19,12 @@ if [[ -z "$ARTIFACT" || ! -f "$ARTIFACT" ]]; then
   printf 'usage: %s <linux-arm64-plugin-library>\n' "${BASH_SOURCE[0]}" >&2
   exit 2
 fi
+
+# The smoke binary dlopen()s this path inside qemu; a slash-less name is
+# looked up as a soname (LD_LIBRARY_PATH, ld.so.cache, /lib, /usr/lib) and
+# never in the current directory, while file/readelf/nm above open it as a
+# plain file. Resolve to an absolute path so dlopen always succeeds.
+ARTIFACT=$(readlink -f -- "$ARTIFACT")
 
 for command in go file readelf nm aarch64-linux-gnu-gcc qemu-aarch64; do
   command -v "$command" >/dev/null || {
