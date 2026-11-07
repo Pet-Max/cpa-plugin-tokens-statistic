@@ -466,7 +466,7 @@ func TestDashboardRequestCacheHitRateContract(t *testing.T) {
 		`return cacheHitRate(cacheReadTokens(point),cacheHitDenominator(point))`,
 		`case 'cache_hit_rate':return cacheHitRateForPoint(item);`,
 		`case 'cache_hit_rate':td=cell(row,formatCacheHitRate(cacheHitRateForPoint(item)),'num');break;`,
-		`t('value.unavailable')`,
+		`return rate===null?'—':localeNumber(rate,{minimumFractionDigits:2,maximumFractionDigits:2})+'%'`,
 		`localeNumber(rate,{minimumFractionDigits:2,maximumFractionDigits:2})+'%'`,
 	} {
 		if !strings.Contains(html, required) {
@@ -525,7 +525,7 @@ func TestDashboardAnalysisSeriesRenderContract(t *testing.T) {
 		// requests render as bottom bars on their own scale, empty buckets stay bare
 		`if(metric.key==='requests'){var barBase=top+plotH,barZone=plotH*0.2,barStride=Math.max(1,Math.ceil(3/slot));`,
 		`c1y=Math.max(lo,Math.min(hi,p1.y+(p2.y-p0.y)/6)),c2y=Math.max(lo,Math.min(hi,p2.y-(p3.y-p1.y)/6))`,
-		`svgNode('rect',{x:left,y:top-2,width:plotW,height:plotH+4})`,
+		`svgNode('rect',{x:left,y:top-6,width:plotW,height:plotH+12})`,
 		`.analysis-bar{fill:var(--metric-requests);opacity:.8}`,
 		// token series: smoothed 2px lines over a bg halo; durations keep smooth 2.5px; ratios stay dashed
 		`function analysisSegments(list)`,
@@ -586,7 +586,7 @@ func TestDashboardAnalysisContinuousWindowContract(t *testing.T) {
 	// PNG export mirrors the continuous window with canvas clipping
 	for _, required := range []string{
 		`var windowStart=analysisZoom.size?analysisZoom.start:0,windowSize=analysisZoom.size||data.length,absBase=Math.floor(windowStart),slot=chartW/windowSize;`,
-		`ctx.rect(chartX,chartY-2,chartW,chartH+4);ctx.clip();`,
+		`ctx.rect(chartX,chartY-6,chartW,chartH+12);ctx.clip();`,
 	} {
 		if !strings.Contains(dashboardHTML, required) {
 			t.Fatalf("full dashboard missing analysis export continuous window contract %q", required)

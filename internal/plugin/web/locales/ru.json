@@ -144,7 +144,6 @@
   "result.failedHttp": "Ошибка (HTTP {status})",
   "cache.hit": "Попадание",
   "cache.miss": "Промах",
-  "value.unavailable": "Недоступно",
   "value.base": "Базовый",
   "pricing.title": "Цены моделей и синхронизация",
   "pricing.revision": "Версия прайс-листа: #{revision}",

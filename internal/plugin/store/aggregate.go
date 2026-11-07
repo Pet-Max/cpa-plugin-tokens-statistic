@@ -472,6 +472,9 @@ func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUse
 	modelFreeFilter := filter
 	modelFreeFilter.Model = ""
 	allModels := make(map[string]struct{})
+	catalogFilter := filter
+	catalogFilter.Source = ""
+	catalogFilter.Model = ""
 	for key, counters := range data {
 		bucketTime := time.Unix(key.Hour, 0).UTC()
 		if !queryRange.Start.IsZero() && bucketTime.Before(queryRange.Start) {
@@ -481,7 +484,7 @@ func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUse
 			continue
 		}
 		dimensions := SanitizeDimensionsSource(key.Dimensions)
-		if dimensions.Source != "" {
+		if dimensions.Source != "" && catalogFilter.matches(dimensions) {
 			sources[dimensions.Source] = struct{}{}
 		}
 		if modelFreeFilter.matches(dimensions) {
@@ -802,6 +805,9 @@ func buildInitialStatsForRange(data map[aggregateKey]Counters, since, lastUsed t
 	modelFreeFilter := filter
 	modelFreeFilter.Model = ""
 	allModels := make(map[string]struct{})
+	catalogFilter := filter
+	catalogFilter.Source = ""
+	catalogFilter.Model = ""
 	summary := Counters{}
 	for key, counters := range data {
 		bucketTime := time.Unix(key.Hour, 0).UTC()
@@ -809,7 +815,7 @@ func buildInitialStatsForRange(data map[aggregateKey]Counters, since, lastUsed t
 			continue
 		}
 		dimensions := SanitizeDimensionsSource(key.Dimensions)
-		if dimensions.Source != "" {
+		if dimensions.Source != "" && catalogFilter.matches(dimensions) {
 			sources[dimensions.Source] = struct{}{}
 		}
 		if modelFreeFilter.matches(dimensions) {

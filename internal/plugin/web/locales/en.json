@@ -144,7 +144,6 @@
   "result.failedHttp": "Failed (HTTP {status})",
   "cache.hit": "Hit",
   "cache.miss": "Miss",
-  "value.unavailable": "Unavailable",
   "value.base": "Base",
   "pricing.title": "Model prices and synchronization",
   "pricing.revision": "Price book version: #{revision}",

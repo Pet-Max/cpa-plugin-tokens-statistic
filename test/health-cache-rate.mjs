@@ -134,7 +134,7 @@ try {
     const track = document.querySelector('.health-track');
     return {
       count: list.length,
-      animated: Array.from(list).filter((el) => getComputedStyle(el).animationName === 'hp-flow').length,
+      animated: Array.from(list).filter((el) => ['hp-flow', 'hp-flow-c', 'hp-flow-cd'].includes(getComputedStyle(el).animationName)).length,
       fillWidth: fill ? fill.getBoundingClientRect().width : -1,
       trackWidth: track ? track.getBoundingClientRect().width : -2,
     };

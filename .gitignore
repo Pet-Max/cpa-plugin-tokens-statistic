@@ -61,3 +61,6 @@ design-preview/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Local-only release notes (maintained offline, not published)
+CHANGELOG.md

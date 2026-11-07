@@ -1,12 +1,12 @@
 // Particle-density regression for the health panel's big capsule: the flowing
-// bubbles must reach the right edge of the fill, not die out ~11% short of it.
-// Guards the fix that moved the fade-in into the clipped zone (keyframes birth
-// offset) and shifted the front anchors (nth-of-type 1/2/3/21/22/23) outward.
+// bubbles must reach the right edge of the fill rather than dying out short of
+// it. Bubbles are born at the fill's right edge (-2%) and travel across 108cqi
+// before fading out near the far end, so every part of the fill receives
+// traffic at all times.
 //
 // Metric: across 12 samples 300ms apart, the average distance from the fill's
 // right edge to the nearest visible bubble (computed opacity >= 0.3) must stay
-// under 7% of the fill width. The pre-fix build measured ~11.3% on a 1041px
-// fill (118px); the fixed build measures 1.8-4.1% across runs (~19-43px).
+// under 7% of the fill width.
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -64,7 +64,7 @@ try {
     const list = document.querySelectorAll('#healthFill b');
     return {
       count: list.length,
-      animated: Array.from(list).filter((el) => getComputedStyle(el).animationName === 'hp-flow').length,
+      animated: Array.from(list).filter((el) => ['hp-flow', 'hp-flow-c', 'hp-flow-cd'].includes(getComputedStyle(el).animationName)).length,
     };
   });
   check('capsule bubble count unchanged (30)', bubbles.count === 30, String(bubbles.count));
