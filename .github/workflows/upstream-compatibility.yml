@@ -10,8 +10,14 @@ permissions:
 
 jobs:
   latest-cli-proxy-api:
-    name: Latest CLIProxyAPI SDK and ABI
+    name: Latest CLIProxyAPI ${{ matrix.sdk-major }} SDK and ABI
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk-major: [v7, v8]
+    env:
+      UPSTREAM_MODULE: github.com/router-for-me/CLIProxyAPI/${{ matrix.sdk-major }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,9 +40,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          module=github.com/router-for-me/CLIProxyAPI/v7
-          latest=$(go list -m -json "${module}@latest" | jq -r .Version)
-          info=$(go mod download -json "${module}@${latest}")
+          latest=$(go list -m -json "${UPSTREAM_MODULE}@latest" | jq -r .Version)
+          info=$(go mod download -json "${UPSTREAM_MODULE}@${latest}")
           module_dir=$(printf '%s' "$info" | jq -r .Dir)
 
           grep -Eq 'ABIVersion[[:space:]]+uint32[[:space:]]*=[[:space:]]*1' \
@@ -52,10 +57,16 @@ jobs:
         env:
           REQUIRE_BROWSER_TESTS: "1"
           CHROME_PATH: /usr/bin/google-chrome
+          UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
         run: |
           set -euo pipefail
-          module=github.com/router-for-me/CLIProxyAPI/v7
-          go mod edit -require="${module}@${{ steps.upstream.outputs.version }}"
+          baseline_module=github.com/router-for-me/CLIProxyAPI/v7
+          if [[ "$UPSTREAM_MODULE" != "$baseline_module" ]]; then
+            # Rewrite only the disposable CI checkout; major versions use distinct import paths.
+            git ls-files -z '*.go' | xargs -0 sed -i "s|${baseline_module}/|${UPSTREAM_MODULE}/|g"
+            go mod edit -droprequire="$baseline_module"
+          fi
+          go mod edit -require="${UPSTREAM_MODULE}@${UPSTREAM_VERSION}"
           go mod tidy
           go test -count=1 ./...
 
