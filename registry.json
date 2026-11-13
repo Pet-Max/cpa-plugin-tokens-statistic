@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "plugins": [
+    {
+      "id": "tokens-statistic",
+      "name": "Tokens Statistic (v8 compatibility)",
+      "description": "Token usage, cost, and latency dashboard. Pinned to the v0.3.10-v8 prerelease with verified CLIProxyAPI v7/v8 SDK compatibility.",
+      "author": "Pet-Max; v8 compatibility checks by wangyuyan666",
+      "version": "0.3.10-v8",
+      "repository": "https://github.com/wangyuyan666/cpa-plugin-tokens-statistic",
+      "homepage": "https://github.com/wangyuyan666/cpa-plugin-tokens-statistic/releases/tag/v0.3.10-v8",
+      "logo": "https://raw.githubusercontent.com/wangyuyan666/cpa-plugin-tokens-statistic/v0.3.10-v8/images/logo.svg",
+      "license": "MIT",
+      "tags": ["Management", "Usage", "Statistics", "Dashboard"],
+      "install": {
+        "type": "direct",
+        "artifacts": [
+          {
+            "goos": "darwin",
+            "goarch": "amd64",
+            "url": "https://github.com/wangyuyan666/cpa-plugin-tokens-statistic/releases/download/v0.3.10-v8/tokens-statistic_0.3.10-v8_darwin_amd64.zip",
+            "sha256": "3d1a6be17340bf5f1a0c6c60e769f9655d6a90149ab84314afb0df52b51d48cf",
+            "size": 3313734
+          },
+          {
+            "goos": "darwin",
+            "goarch": "arm64",
+            "url": "https://github.com/wangyuyan666/cpa-plugin-tokens-statistic/releases/download/v0.3.10-v8/tokens-statistic_0.3.10-v8_darwin_arm64.zip",
+            "sha256": "9e755b864036afc9ee1e8e53ad74dd8a471b31eb17ab1c5c9924734672c0e010",
+            "size": 3060221
+          },
+          {
+            "goos": "linux",
+            "goarch": "amd64",
+            "url": "https://github.com/wangyuyan666/cpa-plugin-tokens-statistic/releases/download/v0.3.10-v8/tokens-statistic_0.3.10-v8_linux_amd64.zip",
+            "sha256": "4acc749f7c02b78aa1f38af6d1870154ba39a4eff751ee86288ef47b4e672c12",
+            "size": 3486741
+          },
+          {
+            "goos": "linux",
+            "goarch": "arm64",
+            "url": "https://github.com/wangyuyan666/cpa-plugin-tokens-statistic/releases/download/v0.3.10-v8/tokens-statistic_0.3.10-v8_linux_arm64.zip",
+            "sha256": "a74476e1359f78f7764c5d77b424ef9fe4e810d927540525f5a77ac3e5600711",
+            "size": 3158583
+          },
+          {
+            "goos": "windows",
+            "goarch": "amd64",
+            "url": "https://github.com/wangyuyan666/cpa-plugin-tokens-statistic/releases/download/v0.3.10-v8/tokens-statistic_0.3.10-v8_windows_amd64.zip",
+            "sha256": "089fdb280ef4d59d21e508e1c2a4e95b05d10739818b90f00197a5fdfe3d0971",
+            "size": 3454351
+          },
+          {
+            "goos": "windows",
+            "goarch": "arm64",
+            "url": "https://github.com/wangyuyan666/cpa-plugin-tokens-statistic/releases/download/v0.3.10-v8/tokens-statistic_0.3.10-v8_windows_arm64.zip",
+            "sha256": "9da0902b7fa4673320d42bc303cdec83f94ea915019f8472ed6be64ad2ec529a",
+            "size": 3187838
+          }
+        ]
+      }
+    }
+  ]
+}

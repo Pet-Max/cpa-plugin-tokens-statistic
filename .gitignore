@@ -39,6 +39,7 @@ yarn-error.log*
 # AI / local tooling
 .ai/
 .claude/
+.codegraph/
 .zcode/
 .tmp-variants/
 .tools/
