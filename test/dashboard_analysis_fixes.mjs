@@ -295,6 +295,7 @@ try {
 
   // Turn on totalTokens so single-point line renders too.
   await page.locator('.series-key-button[data-series="totalTokens"]').click();
+  await page.waitForFunction(() => Boolean(document.querySelector('#analysisHitLayer .bar-hit[data-index="601"]')) && document.querySelectorAll('#analysisPlot circle.analysis-symbol').length >= 1, undefined, { timeout: 5000 }).catch(() => {});
 
   const cardCacheRate = await page.locator('#cacheRate').textContent();
   if (cardCacheRate !== '0.00%') {
@@ -340,6 +341,7 @@ try {
     page.locator('#refreshButton').click(),
   ]);
   await page.locator('.series-key-button[data-series="latency"]').click();
+  await page.waitForFunction(() => document.querySelectorAll('#analysisChart path.analysis-line.count').length === 2 && Boolean(document.querySelector('#analysisChart .analysis-latency-axis')), undefined, { timeout: 5000 }).catch(() => {});
 
   const geometry = await page.evaluate(() => {
     const svg = document.getElementById('analysisChart');
@@ -419,6 +421,7 @@ try {
   const tickCosts = page.waitForResponse((res) => new URL(res.url()).pathname === `${host.managementBase}/costs`);
   await page.clock.fastForward(15500);
   await Promise.all([tickInitial, tickGroups, tickCosts]);
+  await page.waitForFunction((prev) => document.getElementById('status')?.textContent !== prev, statusBeforeTick, { timeout: 5000 }).catch(() => {});
   const statusAfterTick = await page.locator('#status').textContent();
   if (statusAfterTick === statusBeforeTick) {
     throw new Error(`rolling preset #status froze across 15s tick: "${statusBeforeTick}"`);
@@ -466,6 +469,12 @@ try {
     }),
     claudeOpt.click(),
   ]);
+  await page.waitForFunction((expected) => {
+    const table = document.querySelector('.dimension-table');
+    if (table && table.classList.contains('is-loading')) return false;
+    const cells = Array.from(document.querySelectorAll('#groups td[data-column="model"]')).map((n) => n.textContent);
+    return cells.length === 1 && cells[0] === expected;
+  }, CLAUDE_MODEL, { timeout: 5000 }).catch(() => {});
   const groupModelTexts = await page.locator('#groups td[data-column="model"]').allTextContents();
   if (groupModelTexts.length !== 1 || groupModelTexts[0] !== CLAUDE_MODEL) {
     throw new Error(`global #modelFilter failed to narrow Model details: ${JSON.stringify(groupModelTexts)}`);
