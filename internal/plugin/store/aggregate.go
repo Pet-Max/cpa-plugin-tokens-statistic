@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-// legacyUntitledModelName is retained only to accept old API filters; it is
-// not emitted in new statistics responses.
-const legacyUntitledModelName = "未标记模型"
+// LegacyUntitledModelName is retained only to accept old API filters and legacy
+// price-book entries; it is not emitted in new statistics responses.
+const LegacyUntitledModelName = "未标记模型"
 
 // untitledModelFilter is the locale-independent filter value for records
 // without a model name. The dashboard sends it instead of the localized
@@ -318,31 +318,66 @@ type GroupStats struct {
 	AverageTTFTNS    uint64 `json:"average_ttft_ns"`
 }
 
-// ModelStats is the compact per-model aggregate used by the first dashboard
-// response. Provider and executor are kept so the dashboard can classify each
-// model's cache accounting kind; the remaining dimension fields in GroupStats
-// stay omitted.
+// ModelStats is the compact per-model aggregate used by the initial dashboard
+// response. Provider and executor are retained so the dashboard can classify each
+// model's cache accounting kind, and CacheRateNumerator/CacheRateDenominator carry
+// accounting-aware cache-rate sums so unknown-provider rows do not dilute known rates.
 type ModelStats struct {
-	Model        string `json:"model"`
-	Provider     string `json:"provider"`
-	ExecutorType string `json:"executor_type"`
+	Model                string `json:"model"`
+	Provider             string `json:"provider"`
+	ExecutorType         string `json:"executor_type"`
+	CacheRateNumerator   uint64 `json:"cache_rate_numerator"`
+	CacheRateDenominator uint64 `json:"cache_rate_denominator"`
 	Counters
 	AverageLatencyNS uint64 `json:"average_latency_ns"`
 	AverageTTFTNS    uint64 `json:"average_ttft_ns"`
 }
 
+// SeriesPoint is one time-bucketed aggregate across filtered dimensions, carrying
+// accounting-aware cache-rate sums alongside request and token counters.
 type SeriesPoint struct {
-	Hour string `json:"hour"`
+	Hour                 string `json:"hour"`
+	CacheRateNumerator   uint64 `json:"cache_rate_numerator"`
+	CacheRateDenominator uint64 `json:"cache_rate_denominator"`
 	Counters
 }
 
-// ModelSeriesPoint preserves the time-bucketed model split needed by the dashboard for
-// stacked trends, model drill-down, and cost calculations without retaining
-// individual prompt contents.
+// ModelSeriesPoint preserves the time-bucketed model split and cache-rate sums needed
+// by the dashboard for stacked trends, model drill-down, and cost calculations without
+// retaining prompt contents.
 type ModelSeriesPoint struct {
-	Hour  string `json:"hour"`
-	Model string `json:"model"`
+	Hour                 string `json:"hour"`
+	Model                string `json:"model"`
+	CacheRateNumerator   uint64 `json:"cache_rate_numerator"`
+	CacheRateDenominator uint64 `json:"cache_rate_denominator"`
 	Counters
+}
+
+// seriesBucket accumulates time-bucket counters together with accounting-aware
+// cache-rate numerators and denominators, ignoring unknown providers during add
+// and preserving exact sums when pre-classified buckets are merged.
+type seriesBucket struct {
+	counters             Counters
+	cacheRateNumerator   uint64
+	cacheRateDenominator uint64
+}
+
+func (b *seriesBucket) add(counters Counters, dimensions Dimensions) {
+	b.counters.add(counters)
+	if kind, known := cacheAccountingForDimensions(dimensions); known {
+		if num, den, ok := cacheRateParts(kind, counters); ok {
+			b.cacheRateNumerator = saturatingAdd(b.cacheRateNumerator, num)
+			b.cacheRateDenominator = saturatingAdd(b.cacheRateDenominator, den)
+		}
+	}
+}
+
+func (b *seriesBucket) merge(counters Counters, numerator, denominator uint64) {
+	b.counters.add(counters)
+	if denominator > 0 {
+		b.cacheRateNumerator = saturatingAdd(b.cacheRateNumerator, numerator)
+		b.cacheRateDenominator = saturatingAdd(b.cacheRateDenominator, denominator)
+	}
 }
 
 type StatsResponse struct {
@@ -461,11 +496,11 @@ func buildStatsForRange(data map[aggregateKey]Counters, since, lastUsed time.Tim
 
 func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUsed time.Time, queryRange Range, filter Filter, now time.Time, apiKeyCiphertexts map[string]string, spec GroupSpec) StatsResponse {
 	groups := make(map[Dimensions]Counters)
-	series := make(map[int64]Counters)
+	series := make(map[int64]seriesBucket)
 	modelSeries := make(map[struct {
 		Hour  int64
 		Model string
-	}]Counters)
+	}]seriesBucket)
 	summary := Counters{}
 	sources := make(map[string]struct{})
 	apiKeyRefs := make(map[string]struct{})
@@ -504,7 +539,7 @@ func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUse
 		groups[identity] = group
 
 		point := series[key.Hour]
-		point.add(counters)
+		point.add(counters, dimensions)
 		series[key.Hour] = point
 
 		model := CompactModelName(key.Dimensions.Model)
@@ -513,7 +548,7 @@ func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUse
 			Model string
 		}{Hour: key.Hour, Model: model}
 		modelPoint := modelSeries[modelKey]
-		modelPoint.add(counters)
+		modelPoint.add(counters, dimensions)
 		modelSeries[modelKey] = modelPoint
 
 		summary.add(counters)
@@ -545,9 +580,12 @@ func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUse
 	sort.Slice(hours, func(i, j int) bool { return hours[i] < hours[j] })
 	points := make([]SeriesPoint, 0, len(hours))
 	for _, hour := range hours {
+		bucket := series[hour]
 		points = append(points, SeriesPoint{
-			Hour:     time.Unix(hour, 0).UTC().Format(time.RFC3339),
-			Counters: series[hour],
+			Hour:                 time.Unix(hour, 0).UTC().Format(time.RFC3339),
+			CacheRateNumerator:   bucket.cacheRateNumerator,
+			CacheRateDenominator: bucket.cacheRateDenominator,
+			Counters:             bucket.counters,
 		})
 	}
 
@@ -566,10 +604,13 @@ func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUse
 	})
 	modelPoints := make([]ModelSeriesPoint, 0, len(modelKeys))
 	for _, key := range modelKeys {
+		bucket := modelSeries[key]
 		modelPoints = append(modelPoints, ModelSeriesPoint{
-			Hour:     time.Unix(key.Hour, 0).UTC().Format(time.RFC3339),
-			Model:    key.Model,
-			Counters: modelSeries[key],
+			Hour:                 time.Unix(key.Hour, 0).UTC().Format(time.RFC3339),
+			Model:                key.Model,
+			CacheRateNumerator:   bucket.cacheRateNumerator,
+			CacheRateDenominator: bucket.cacheRateDenominator,
+			Counters:             bucket.counters,
 		})
 	}
 	sourceValues := make([]string, 0, len(sources))
@@ -600,6 +641,42 @@ func buildStatsForRangeWithFilter(data map[aggregateKey]Counters, since, lastUse
 	}
 }
 
+const (
+	// Allow 25h for minute buckets and 31d+1h for hour buckets so full single-day
+	// and full-month local ranges remain eligible across DST fall-back transitions.
+	maxMinuteGranularitySpan = 25 * time.Hour
+	maxHourGranularitySpan   = 31*24*time.Hour + time.Hour
+	maxDayGranularitySpan    = 4 * 366 * 24 * time.Hour
+)
+
+// ParseGranularity validates the optional stats trend aggregation parameter.
+func ParseGranularity(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	switch value {
+	case "", "minute", "hour", "day", "week", "month":
+		return value, nil
+	default:
+		return "", errs.WithStatus(400, "unsupported granularity %q", value)
+	}
+}
+
+// rangeSpan computes the positive duration of queryRange, falling back to
+// since/now when either boundary is zero.
+func rangeSpan(queryRange Range, since, now time.Time) time.Duration {
+	start := queryRange.Start
+	if start.IsZero() {
+		start = since
+	}
+	end := queryRange.End
+	if end.IsZero() {
+		end = now
+	}
+	if start.IsZero() || !start.Before(end) {
+		return 0
+	}
+	return end.Sub(start)
+}
+
 func compactBucketSeconds(queryRange Range, since, now time.Time) uint64 {
 	switch queryRange.Name {
 	case "24h":
@@ -609,19 +686,48 @@ func compactBucketSeconds(queryRange Range, since, now time.Time) uint64 {
 	case "30d":
 		return uint64((6 * time.Hour) / time.Second)
 	}
-	start := queryRange.Start
-	if start.IsZero() {
-		start = since
-	}
-	if start.IsZero() || !start.Before(now) {
+	span := rangeSpan(queryRange, since, now)
+	if span <= 0 {
 		return uint64(time.Hour / time.Second)
 	}
-	for _, width := range []uint64{300, 900, 3600, 21600, 86400, 604800} {
-		if uint64(now.Sub(start)/time.Second)/width <= 360 {
+	spanSeconds := uint64(span / time.Second)
+	for _, width := range []uint64{60, 300, 900, 3600, 21600, 86400, 604800} {
+		if spanSeconds/width <= 360 {
 			return width
 		}
 	}
 	return 604800
+}
+
+// bucketSecondsForGranularity lowers the bucket width to match a requested
+// frontend chart granularity when the range span stays within safe bucket-count
+// limits, while never coarsening beyond compactBucketSeconds so local timezone
+// day/week/month boundaries remain accurate on the client.
+func bucketSecondsForGranularity(queryRange Range, since, now time.Time, granularity string) uint64 {
+	defaultWidth := compactBucketSeconds(queryRange, since, now)
+	var desired uint64
+	var maxSpan time.Duration
+	switch granularity {
+	case "minute":
+		desired = 60
+		maxSpan = maxMinuteGranularitySpan
+	case "hour":
+		desired = 3600
+		maxSpan = maxHourGranularitySpan
+	case "day":
+		desired = 86400
+		maxSpan = maxDayGranularitySpan
+	default:
+		return defaultWidth
+	}
+	if desired >= defaultWidth {
+		return defaultWidth
+	}
+	span := rangeSpan(queryRange, since, now)
+	if span > 0 && span <= maxSpan {
+		return desired
+	}
+	return defaultWidth
 }
 
 func compactBucket(unix int64, bucketSeconds uint64) int64 {
@@ -642,10 +748,10 @@ func ModelFilterMatches(requested, model string) bool {
 	if model == requested {
 		return true
 	}
-	return model == "" && (requested == legacyUntitledModelName || requested == untitledModelFilter)
+	return model == "" && (requested == LegacyUntitledModelName || requested == untitledModelFilter)
 }
 
-func sortedCompactSeries(series map[int64]Counters) []SeriesPoint {
+func sortedCompactSeries(series map[int64]seriesBucket) []SeriesPoint {
 	keys := make([]int64, 0, len(series))
 	for key := range series {
 		keys = append(keys, key)
@@ -653,23 +759,37 @@ func sortedCompactSeries(series map[int64]Counters) []SeriesPoint {
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 	points := make([]SeriesPoint, 0, len(keys))
 	for _, key := range keys {
-		points = append(points, SeriesPoint{Hour: time.Unix(key, 0).UTC().Format(time.RFC3339), Counters: series[key]})
+		bucket := series[key]
+		points = append(points, SeriesPoint{
+			Hour:                 time.Unix(key, 0).UTC().Format(time.RFC3339),
+			CacheRateNumerator:   bucket.cacheRateNumerator,
+			CacheRateDenominator: bucket.cacheRateDenominator,
+			Counters:             bucket.counters,
+		})
 	}
 	return points
 }
 
-// compactModelAggregate merges counters for one model name while collecting the
-// provider/executor candidates observed for it. The dashboard classifies cache
-// accounting per model, so the response must carry a deterministic value even
-// when the same model name was seen under several dimensions.
+// compactModelAggregate merges counters for one model name while collecting its
+// observed provider/executor candidates and accumulating accounting-aware cache-rate
+// sums per dimension. The dashboard uses deterministic provider/executor values to
+// classify cache accounting when per-bucket cache-rate sums are unavailable.
 type compactModelAggregate struct {
-	counters  Counters
-	providers map[string]struct{}
-	executors map[string]struct{}
+	counters             Counters
+	cacheRateNumerator   uint64
+	cacheRateDenominator uint64
+	providers            map[string]struct{}
+	executors            map[string]struct{}
 }
 
 func (a *compactModelAggregate) add(counters Counters, provider, executor string) {
 	a.counters.add(counters)
+	if kind, known := cacheAccountingForDimensions(Dimensions{Provider: provider, ExecutorType: executor}); known {
+		if num, den, ok := cacheRateParts(kind, counters); ok {
+			a.cacheRateNumerator = saturatingAdd(a.cacheRateNumerator, num)
+			a.cacheRateDenominator = saturatingAdd(a.cacheRateDenominator, den)
+		}
+	}
 	if provider != "" {
 		if a.providers == nil {
 			a.providers = make(map[string]struct{})
@@ -700,7 +820,16 @@ func sortedCompactModels(models map[string]compactModelAggregate) []ModelStats {
 	rows := make([]ModelStats, 0, len(models))
 	for model, aggregate := range models {
 		counters := aggregate.counters
-		rows = append(rows, ModelStats{Model: model, Provider: firstSortedValue(aggregate.providers), ExecutorType: firstSortedValue(aggregate.executors), Counters: counters, AverageLatencyNS: counters.averageLatencyNS(), AverageTTFTNS: counters.averageTTFTNS()})
+		rows = append(rows, ModelStats{
+			Model:                model,
+			Provider:             firstSortedValue(aggregate.providers),
+			ExecutorType:         firstSortedValue(aggregate.executors),
+			CacheRateNumerator:   aggregate.cacheRateNumerator,
+			CacheRateDenominator: aggregate.cacheRateDenominator,
+			Counters:             counters,
+			AverageLatencyNS:     counters.averageLatencyNS(),
+			AverageTTFTNS:        counters.averageTTFTNS(),
+		})
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].TotalTokens != rows[j].TotalTokens {
@@ -711,9 +840,9 @@ func sortedCompactModels(models map[string]compactModelAggregate) []ModelStats {
 	return rows
 }
 
-func initialStatsFromFull(stats StatsResponse, queryRange Range) InitialStatsResponse {
-	bucketSeconds := compactBucketSeconds(queryRange, stats.RetainedSince, stats.GeneratedAt)
-	series := make(map[int64]Counters)
+func initialStatsFromFullWithGranularity(stats StatsResponse, queryRange Range, granularity string) InitialStatsResponse {
+	bucketSeconds := bucketSecondsForGranularity(queryRange, stats.RetainedSince, stats.GeneratedAt, granularity)
+	series := make(map[int64]seriesBucket)
 	models := make(map[string]compactModelAggregate)
 	for _, point := range stats.Series {
 		timestamp, err := time.Parse(time.RFC3339, point.Hour)
@@ -722,7 +851,7 @@ func initialStatsFromFull(stats StatsResponse, queryRange Range) InitialStatsRes
 		}
 		bucket := compactBucket(timestamp.Unix(), bucketSeconds)
 		value := series[bucket]
-		value.add(point.Counters)
+		value.merge(point.Counters, point.CacheRateNumerator, point.CacheRateDenominator)
 		series[bucket] = value
 	}
 	for _, group := range stats.Groups {
@@ -747,12 +876,12 @@ func initialStatsFromFull(stats StatsResponse, queryRange Range) InitialStatsRes
 	}
 }
 
-func trendStatsFromFull(stats StatsResponse, queryRange Range) StatsTrendResponse {
-	bucketSeconds := compactBucketSeconds(queryRange, stats.RetainedSince, stats.GeneratedAt)
+func trendStatsFromFullWithGranularity(stats StatsResponse, queryRange Range, granularity string) StatsTrendResponse {
+	bucketSeconds := bucketSecondsForGranularity(queryRange, stats.RetainedSince, stats.GeneratedAt, granularity)
 	series := make(map[struct {
 		bucket int64
 		model  string
-	}]Counters)
+	}]seriesBucket)
 	for _, point := range stats.ModelSeries {
 		timestamp, err := time.Parse(time.RFC3339, point.Hour)
 		if err != nil {
@@ -763,7 +892,7 @@ func trendStatsFromFull(stats StatsResponse, queryRange Range) StatsTrendRespons
 			model  string
 		}{bucket: compactBucket(timestamp.Unix(), bucketSeconds), model: CompactModelName(point.Model)}
 		value := series[key]
-		value.add(point.Counters)
+		value.merge(point.Counters, point.CacheRateNumerator, point.CacheRateDenominator)
 		series[key] = value
 	}
 	keys := make([]struct {
@@ -781,7 +910,14 @@ func trendStatsFromFull(stats StatsResponse, queryRange Range) StatsTrendRespons
 	})
 	points := make([]ModelSeriesPoint, 0, len(keys))
 	for _, key := range keys {
-		points = append(points, ModelSeriesPoint{Hour: time.Unix(key.bucket, 0).UTC().Format(time.RFC3339), Model: key.model, Counters: series[key]})
+		bucket := series[key]
+		points = append(points, ModelSeriesPoint{
+			Hour:                 time.Unix(key.bucket, 0).UTC().Format(time.RFC3339),
+			Model:                key.model,
+			CacheRateNumerator:   bucket.cacheRateNumerator,
+			CacheRateDenominator: bucket.cacheRateDenominator,
+			Counters:             bucket.counters,
+		})
 	}
 	return StatsTrendResponse{SchemaVersion: 2, GeneratedAt: stats.GeneratedAt, Range: stats.Range, BucketSeconds: bucketSeconds, ModelSeries: points}
 }
@@ -796,9 +932,9 @@ func sortedStatsAPIKeys(refs map[string]struct{}, ciphertexts map[string]string)
 	return values
 }
 
-func buildInitialStatsForRange(data map[aggregateKey]Counters, since, lastUsed time.Time, queryRange Range, filter Filter, now time.Time, apiKeyCiphertexts map[string]string) InitialStatsResponse {
-	bucketSeconds := compactBucketSeconds(queryRange, since, now)
-	series := make(map[int64]Counters)
+func buildInitialStatsForRangeWithGranularity(data map[aggregateKey]Counters, since, lastUsed time.Time, queryRange Range, filter Filter, now time.Time, apiKeyCiphertexts map[string]string, granularity string) InitialStatsResponse {
+	bucketSeconds := bucketSecondsForGranularity(queryRange, since, now, granularity)
+	series := make(map[int64]seriesBucket)
 	models := make(map[string]compactModelAggregate)
 	sources := make(map[string]struct{})
 	apiKeyRefs := make(map[string]struct{})
@@ -831,7 +967,7 @@ func buildInitialStatsForRange(data map[aggregateKey]Counters, since, lastUsed t
 		}
 		seriesKey := compactBucket(key.Hour, bucketSeconds)
 		point := series[seriesKey]
-		point.add(counters)
+		point.add(counters, dimensions)
 		series[seriesKey] = point
 		model := CompactModelName(dimensions.Model)
 		value := models[model]
@@ -856,12 +992,12 @@ func sortedStringSet(values map[string]struct{}) []string {
 	return keys
 }
 
-func buildStatsTrendForRange(data map[aggregateKey]Counters, since time.Time, queryRange Range, filter Filter, now time.Time) StatsTrendResponse {
-	bucketSeconds := compactBucketSeconds(queryRange, since, now)
+func buildStatsTrendForRangeWithGranularity(data map[aggregateKey]Counters, since time.Time, queryRange Range, filter Filter, now time.Time, granularity string) StatsTrendResponse {
+	bucketSeconds := bucketSecondsForGranularity(queryRange, since, now, granularity)
 	series := make(map[struct {
 		bucket int64
 		model  string
-	}]Counters)
+	}]seriesBucket)
 	for key, counters := range data {
 		bucketTime := time.Unix(key.Hour, 0).UTC()
 		if (!queryRange.Start.IsZero() && bucketTime.Before(queryRange.Start)) || (!queryRange.End.IsZero() && !bucketTime.Before(queryRange.End)) {
@@ -876,7 +1012,7 @@ func buildStatsTrendForRange(data map[aggregateKey]Counters, since time.Time, qu
 			model  string
 		}{bucket: compactBucket(key.Hour, bucketSeconds), model: CompactModelName(dimensions.Model)}
 		point := series[modelKey]
-		point.add(counters)
+		point.add(counters, dimensions)
 		series[modelKey] = point
 	}
 	keys := make([]struct {
@@ -894,7 +1030,14 @@ func buildStatsTrendForRange(data map[aggregateKey]Counters, since time.Time, qu
 	})
 	points := make([]ModelSeriesPoint, 0, len(keys))
 	for _, key := range keys {
-		points = append(points, ModelSeriesPoint{Hour: time.Unix(key.bucket, 0).UTC().Format(time.RFC3339), Model: key.model, Counters: series[key]})
+		bucket := series[key]
+		points = append(points, ModelSeriesPoint{
+			Hour:                 time.Unix(key.bucket, 0).UTC().Format(time.RFC3339),
+			Model:                key.model,
+			CacheRateNumerator:   bucket.cacheRateNumerator,
+			CacheRateDenominator: bucket.cacheRateDenominator,
+			Counters:             bucket.counters,
+		})
 	}
 	return StatsTrendResponse{SchemaVersion: 2, GeneratedAt: now.UTC(), Range: queryRange.Name, BucketSeconds: bucketSeconds, ModelSeries: points}
 }

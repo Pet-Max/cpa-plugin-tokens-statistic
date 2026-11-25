@@ -74,7 +74,7 @@ func cacheRateParts(kind cacheAccounting, c Counters) (numerator, denominator ui
 		numerator = c.CachedTokens
 	}
 	if kind == cacheAccountingIndependent {
-		denominator = c.InputTokens + c.CacheCreationTokens + c.CacheReadTokens
+		denominator = c.InputTokens + c.CacheCreationTokens + numerator
 	} else {
 		denominator = c.InputTokens
 	}
@@ -107,7 +107,7 @@ type HealthCall struct {
 // HealthResponse carries the rolling windows of the health panel: Day
 // (24h × 1h) and Days (24d × 1day), both anchored at the current bucket and
 // ordered oldest → newest, plus Calls, the live tail of individual requests
-// backing the 实时 row.
+// backing the live-tail ("recent") row.
 type HealthResponse struct {
 	SchemaVersion uint32        `json:"schema_version"`
 	GeneratedAt   string        `json:"generated_at"`
@@ -118,13 +118,13 @@ type HealthResponse struct {
 	Calls         []HealthCall  `json:"calls"`
 }
 
-// healthCallWindow bounds how far back the live tail reaches: the 实时 row
+// healthCallWindow bounds how far back the live tail reaches: the live-tail ("recent") row
 // shows individual calls from the last hour only, so stale traffic never
 // masquerades as current health.
 const healthCallWindow = time.Hour
 
 // queryHealth builds the fixed windows plus the live tail of individual
-// calls backing the 实时 row. tzSeconds is the viewer's offset east of UTC;
+// calls backing the live-tail ("recent") row. tzSeconds is the viewer's offset east of UTC;
 // window buckets align to the viewer's local clock (local midnight for the
 // day window, local hour boundaries for the hour window).
 func (a *storeActor) queryHealth(filter Filter, now time.Time, tzSeconds int64) (HealthResponse, error) {
@@ -221,12 +221,13 @@ func buildHealthWindows(data map[aggregateKey]Counters, filter Filter, now time.
 		}
 	}
 	for key, counters := range data {
-		if !filter.matches(key.Dimensions) {
+		dimensions := SanitizeDimensionsSource(key.Dimensions)
+		if !filter.matches(dimensions) {
 			continue
 		}
 		minute := key.Hour
 		numerator, denominator, hasRate := uint64(0), uint64(0), false
-		if kind, known := cacheAccountingForDimensions(key.Dimensions); known {
+		if kind, known := cacheAccountingForDimensions(dimensions); known {
 			numerator, denominator, hasRate = cacheRateParts(kind, counters)
 		}
 		for wi := range windows {

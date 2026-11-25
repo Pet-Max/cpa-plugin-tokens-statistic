@@ -3,9 +3,9 @@
 // server query (groups / requests / scope_model / CSV exports), and the reset
 // button must clear the drill-down completely.
 //
-// Regression guard: before the fix the dashboard sent the localized label
-// (e.g. "Unnamed model"), which ModelFilterMatches could never match in
-// non-zh-CN locales, leaving the request table permanently empty.
+// Contract check: the dashboard must send the locale-neutral __untitled__
+// sentinel rather than a localized label so non-zh-CN locales still match rows
+// on the server (ModelFilterMatches).
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';

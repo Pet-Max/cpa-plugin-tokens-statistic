@@ -81,13 +81,14 @@ type DashboardPreferences struct {
 	TimeRangeEnd           string   `json:"time_range_end,omitempty"`
 }
 
-var dashboardSectionKeys = []string{"metrics", "analysis", "requests", "dimensions"}
+// dashboardSectionKeys must stay aligned with validHiddenSections in dashboard.html.
+var dashboardSectionKeys = []string{"metrics", "health", "analysis", "requests", "dimensions"}
 
 var requestColumnKeys = []string{
 	"time", "model", "alias", "response_model", "source", "api_key", "service_tier", "result", "ttft_ns", "latency_ns", "tps",
 	"reasoning_effort", "input_tokens", "output_tokens", "reasoning_tokens", "cache_read_tokens",
 	"cache_creation_tokens", "total_tokens", "cache_hit", "cache_hit_rate", "estimated_cost", "price_source",
-	// generation_ns was the pre-0.1.5 key of the latency column; it stays
+	// generation_ns is a legacy key of the latency column; it stays
 	// accepted so preferences saved by older builds still normalize.
 	"generation_ns",
 }

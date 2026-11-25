@@ -31,11 +31,11 @@ func TestExactPathInitialKeepsProviderAndExecutor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	initial, err := store.QueryInitialStatsByFilter(Range{
+	initial, err := store.QueryInitialStatsByFilterWithGranularity(Range{
 		Name:  "custom",
 		Start: requestedAt.Add(-time.Minute),
 		End:   requestedAt.Add(time.Minute),
-	}, Filter{})
+	}, Filter{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -35,18 +35,18 @@ func (s *Store) QueryStatsByFilter(queryRange Range, filter Filter) (StatsRespon
 	return result.stats, result.err
 }
 
-func (s *Store) QueryInitialStatsByFilter(queryRange Range, filter Filter) (InitialStatsResponse, error) {
+func (s *Store) QueryInitialStatsByFilterWithGranularity(queryRange Range, filter Filter, granularity string) (InitialStatsResponse, error) {
 	resp := make(chan queryResult, 1)
-	if err := s.send(queryCommand{queryRange: queryRange, filter: filter, mode: statsQueryInitial, resp: resp}); err != nil {
+	if err := s.send(queryCommand{queryRange: queryRange, filter: filter, granularity: granularity, mode: statsQueryInitial, resp: resp}); err != nil {
 		return InitialStatsResponse{}, err
 	}
 	result := <-resp
 	return result.initial, result.err
 }
 
-func (s *Store) QueryStatsTrendByFilter(queryRange Range, filter Filter) (StatsTrendResponse, error) {
+func (s *Store) QueryStatsTrendByFilterWithGranularity(queryRange Range, filter Filter, granularity string) (StatsTrendResponse, error) {
 	resp := make(chan queryResult, 1)
-	if err := s.send(queryCommand{queryRange: queryRange, filter: filter, mode: statsQueryTrend, resp: resp}); err != nil {
+	if err := s.send(queryCommand{queryRange: queryRange, filter: filter, granularity: granularity, mode: statsQueryTrend, resp: resp}); err != nil {
 		return StatsTrendResponse{}, err
 	}
 	result := <-resp

@@ -102,7 +102,7 @@ func (s *Store) run(actor *storeActor) {
 					case statsQueryFull, statsQueryInitial:
 						// Mirror the bucket path, which builds full stats with
 						// allGroupFields: provider and executor_type must stay
-						// populated, and initialStatsFromFull merges the group
+						// populated, and initialStatsFromFullWithGranularity merges the group
 						// rows back per model. A zero spec would blank them.
 						spec = allGroupFields()
 					}
@@ -113,9 +113,9 @@ func (s *Store) run(actor *storeActor) {
 					}
 					switch item.mode {
 					case statsQueryInitial:
-						item.resp <- queryResult{initial: initialStatsFromFull(stats, item.queryRange)}
+						item.resp <- queryResult{initial: initialStatsFromFullWithGranularity(stats, item.queryRange, item.granularity)}
 					case statsQueryTrend:
-						item.resp <- queryResult{trend: trendStatsFromFull(stats, item.queryRange)}
+						item.resp <- queryResult{trend: trendStatsFromFullWithGranularity(stats, item.queryRange, item.granularity)}
 					case statsQueryGroups:
 						item.resp <- queryResult{groups: GroupStatsPage{SchemaVersion: 2, GeneratedAt: stats.GeneratedAt, Range: stats.Range, Items: stats.Groups, Total: len(stats.Groups)}}
 					default:
@@ -150,9 +150,9 @@ func (s *Store) run(actor *storeActor) {
 				}
 				switch item.mode {
 				case statsQueryInitial:
-					item.resp <- queryResult{initial: buildInitialStatsForRange(actor.data, actor.since, actor.lastUsed, item.queryRange, item.filter, now, actor.apiKeyCiphertexts)}
+					item.resp <- queryResult{initial: buildInitialStatsForRangeWithGranularity(actor.data, actor.since, actor.lastUsed, item.queryRange, item.filter, now, actor.apiKeyCiphertexts, item.granularity)}
 				case statsQueryTrend:
-					item.resp <- queryResult{trend: buildStatsTrendForRange(actor.data, actor.since, item.queryRange, item.filter, now)}
+					item.resp <- queryResult{trend: buildStatsTrendForRangeWithGranularity(actor.data, actor.since, item.queryRange, item.filter, now, item.granularity)}
 				case statsQueryGroups:
 					item.resp <- queryResult{groups: buildGroupsForRange(actor.data, item.queryRange, item.filter, now, actor.apiKeyCiphertexts, item.spec)}
 				default:

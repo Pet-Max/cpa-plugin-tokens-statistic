@@ -57,9 +57,8 @@ try {
 
     await authenticate(page, { managementBase: host.managementBase, key: GOOD_KEY });
 
-    // Post-auth: static chrome, control labels, card labels and the dimension
-    // table headers must all follow the same locale (the 0.1.2 re-render
-    // regression guard).
+    // Post-auth: static controls, cards, and dimension table headers must
+    // stay aligned with the active locale after initial render.
     await page.waitForFunction(() => {
       const button = document.getElementById('pricingButton');
       return button && button.querySelector('.button-label') && button.querySelector('.button-label').textContent.trim() !== '';

@@ -5,7 +5,7 @@ set -euo pipefail
 # Uses zig cc for cross-compiling when available, otherwise aarch64-linux-gnu-gcc.
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DIST_DIR="$ROOT_DIR/dist"
-VERSION=${VERSION:-v0.3.10}
+VERSION=${VERSION:-v0.4.0}
 PLUGIN_ID=${PLUGIN_ID:-tokens-statistic}
 # Bare artifacts are staged in a temp dir and discarded after packaging;
 # only the store-conformant release packages land in dist/.
@@ -13,14 +13,6 @@ STAGE=""
 trap 'if [ -n "$STAGE" ]; then rm -rf "$STAGE"; fi' EXIT
 STAGE=$(mktemp -d)
 RELEASE_ARTIFACT="$STAGE/${PLUGIN_ID}-${VERSION}-linux-arm64.so"
-
-# Optional: set CLASH_PROXY_URL (or the standard *_PROXY variables) to route module
-# downloads through a local proxy. By default the ambient environment applies.
-if [[ -n "${CLASH_PROXY_URL:-}" ]]; then
-  export HTTP_PROXY="$CLASH_PROXY_URL" HTTPS_PROXY="$CLASH_PROXY_URL" ALL_PROXY="$CLASH_PROXY_URL"
-  export http_proxy="$CLASH_PROXY_URL" https_proxy="$CLASH_PROXY_URL" all_proxy="$CLASH_PROXY_URL"
-  echo "using proxy $CLASH_PROXY_URL"
-fi
 
 command -v go >/dev/null 2>&1 || { printf 'Required command not found: go\n' >&2; exit 1; }
 if command -v zig >/dev/null 2>&1; then

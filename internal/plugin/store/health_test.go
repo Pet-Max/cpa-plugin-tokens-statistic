@@ -216,3 +216,25 @@ func TestBuildHealthWindowsLocalTimezoneAlignment(t *testing.T) {
 		t.Fatalf("utc-5 days newest bucket: %s", got)
 	}
 }
+
+func TestBuildHealthWindowsLegacyIndependentDenominatorAndSourceSanitization(t *testing.T) {
+	now := time.Date(2026, 10, 24, 9, 7, 30, 0, time.UTC)
+	minute := now.Truncate(time.Minute).Unix()
+	data := map[aggregateKey]Counters{
+		// Legacy Anthropic/Claude record where only CachedTokens (read) + InputTokens are populated,
+		// paired with an unsanitized URL source carrying query/credentials.
+		{Hour: minute, Dimensions: Dimensions{Model: "m", Provider: "claude", Source: "https://user:secret@api.example.com/v1/?key=123"}}: {
+			Requests:     1,
+			InputTokens:  200,
+			CachedTokens: 800,
+		},
+	}
+	resp := buildHealthWindows(data, Filter{Model: "m", Source: "https://api.example.com/v1"}, now, 0)
+	point := resp.Day[23]
+	if point.Requests != 1 {
+		t.Fatalf("sanitized source did not match filter: %+v", point)
+	}
+	if point.CacheRateNumerator != 800 || point.CacheRateDenominator != 1000 {
+		t.Fatalf("legacy independent cache rate sums = %d/%d, want 800/1000", point.CacheRateNumerator, point.CacheRateDenominator)
+	}
+}

@@ -42,3 +42,40 @@ func TestDashboardPreferencesNormalizeTokenDisplayMode(t *testing.T) {
 		t.Fatal("unsupported token display mode was accepted")
 	}
 }
+
+func TestDashboardPreferencesPersistHealthSection(t *testing.T) {
+	normalized, err := NormalizeDashboardPreferences(DashboardPreferences{
+		RequestPageSize:   25,
+		DimensionPageSize: 25,
+		HiddenSections:    []string{"health", "unknown", "requests", "health"},
+		TimeRangeMode:     "today",
+	})
+	if err != nil {
+		t.Fatalf("normalize hidden health section failed: %v", err)
+	}
+	if len(normalized.HiddenSections) != 2 || normalized.HiddenSections[0] != "health" || normalized.HiddenSections[1] != "requests" {
+		t.Fatalf("hidden_sections after normalize = %+v", normalized.HiddenSections)
+	}
+
+	st, err := Open(testConfig(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := st.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	saved, err := st.SaveDashboardPreferences(normalized)
+	if err != nil {
+		t.Fatalf("save preferences failed: %v", err)
+	}
+	loaded, err := st.QueryDashboardPreferences()
+	if err != nil {
+		t.Fatalf("query preferences failed: %v", err)
+	}
+	if len(saved.HiddenSections) != 2 || len(loaded.HiddenSections) != 2 || loaded.HiddenSections[0] != "health" || loaded.HiddenSections[1] != "requests" {
+		t.Fatalf("persisted hidden_sections = saved:%+v loaded:%+v", saved.HiddenSections, loaded.HiddenSections)
+	}
+}

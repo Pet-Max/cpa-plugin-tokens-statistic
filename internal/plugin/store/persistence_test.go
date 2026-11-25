@@ -1550,7 +1550,7 @@ func TestQueryRequestsRecalculatesStoredSeparateReasoningTPS(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 模拟旧版本按首字后耗时计算并持久化的请求，查询时应使用完整耗时重新计算。
+	// Simulate a persisted request whose TPS was computed from post-TTFT duration and verify queries recompute TPS from full latency.
 	db, err := bolt.Open(config.DataPath, 0o600, nil)
 	if err != nil {
 		t.Fatal(err)

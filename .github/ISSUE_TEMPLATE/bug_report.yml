@@ -15,7 +15,7 @@ body:
     attributes:
       label: "插件版本 / Plugin version"
       description: "请填写 tokens-statistic 的版本号 / Please provide the tokens-statistic version"
-      placeholder: "例如：v1.3.4-alpha.153 /  v1.3.4"
+      placeholder: "例如：v0.4.0"
     validations:
       required: true
 

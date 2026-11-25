@@ -22,12 +22,13 @@ const (
 )
 
 type queryCommand struct {
-	queryRange Range
-	filter     Filter
-	spec       GroupSpec
-	mode       statsQueryMode
-	tzMinutes  int
-	resp       chan queryResult
+	queryRange  Range
+	filter      Filter
+	spec        GroupSpec
+	mode        statsQueryMode
+	tzMinutes   int
+	granularity string
+	resp        chan queryResult
 }
 
 type queryResult struct {

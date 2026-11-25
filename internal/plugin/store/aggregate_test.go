@@ -337,14 +337,14 @@ func TestCompactStatsDownsamplesAndPreservesCounters(t *testing.T) {
 		{Hour: now.Add(-2*time.Minute - 30*time.Second).Unix(), Dimensions: model}: {Requests: 3, TotalTokens: 30, TotalLatencyNS: uint64(9 * time.Second), LatencySamples: 3, TotalTTFTNS: uint64(2 * time.Second), TTFTSamples: 2},
 	}
 	queryRange := Range{Name: "24h", Start: now.Add(-24 * time.Hour)}
-	initial := buildInitialStatsForRange(data, now.Add(-30*24*time.Hour), now, queryRange, Filter{}, now, nil)
+	initial := buildInitialStatsForRangeWithGranularity(data, now.Add(-30*24*time.Hour), now, queryRange, Filter{}, now, nil, "")
 	if initial.SchemaVersion != 2 || initial.BucketSeconds != 300 || len(initial.Series) != 1 || len(initial.Models) != 1 {
 		t.Fatalf("compact initial shape = %+v", initial)
 	}
 	if initial.Summary.Requests != 5 || initial.Summary.TotalTokens != 50 || initial.Models[0].AverageLatencyNS != uint64(2600*time.Millisecond) || initial.Models[0].AverageTTFTNS != uint64(time.Second) {
 		t.Fatalf("compact initial counters = %+v", initial)
 	}
-	trend := buildStatsTrendForRange(data, now.Add(-30*24*time.Hour), queryRange, Filter{}, now)
+	trend := buildStatsTrendForRangeWithGranularity(data, now.Add(-30*24*time.Hour), queryRange, Filter{}, now, "")
 	if trend.SchemaVersion != 2 || trend.BucketSeconds != 300 || len(trend.ModelSeries) != 1 || trend.ModelSeries[0].Requests != 5 || trend.ModelSeries[0].TotalTTFTNS != uint64(3*time.Second) || trend.ModelSeries[0].TTFTSamples != 3 {
 		t.Fatalf("compact trend = %+v", trend)
 	}
@@ -379,7 +379,7 @@ func TestInitialStatsCarriesProviderForCacheAccounting(t *testing.T) {
 	}
 	queryRange := Range{Name: "retention"}
 
-	initial := buildInitialStatsForRange(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil)
+	initial := buildInitialStatsForRangeWithGranularity(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil, "")
 	if len(initial.Models) != 2 {
 		t.Fatalf("initial models = %+v", initial.Models)
 	}
@@ -395,7 +395,7 @@ func TestInitialStatsCarriesProviderForCacheAccounting(t *testing.T) {
 	}
 
 	full := StatsResponse{Groups: []GroupStats{{Dimensions: Dimensions{Provider: "claude", ExecutorType: "anthropic", Model: "claude-sonnet-4-5"}, Counters: Counters{Requests: 1}}}}
-	compact := initialStatsFromFull(full, queryRange)
+	compact := initialStatsFromFullWithGranularity(full, queryRange, "")
 	if len(compact.Models) != 1 || compact.Models[0].Provider != "claude" || compact.Models[0].ExecutorType != "anthropic" {
 		t.Fatalf("compact models = %+v", compact.Models)
 	}
@@ -412,7 +412,7 @@ func TestInitialStatsAllModelsIgnoreModelFilter(t *testing.T) {
 	}
 	queryRange := Range{Name: "retention"}
 
-	scoped := buildInitialStatsForRange(data, now.Add(-time.Hour), now, queryRange, Filter{Model: "gpt-5.2-codex"}, now, nil)
+	scoped := buildInitialStatsForRangeWithGranularity(data, now.Add(-time.Hour), now, queryRange, Filter{Model: "gpt-5.2-codex"}, now, nil, "")
 	if len(scoped.Models) != 1 || scoped.Models[0].Model != "gpt-5.2-codex" {
 		t.Fatalf("scoped models must stay filtered = %+v", scoped.Models)
 	}
@@ -426,7 +426,7 @@ func TestInitialStatsAllModelsIgnoreModelFilter(t *testing.T) {
 		}
 	}
 
-	unscoped := buildInitialStatsForRange(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil)
+	unscoped := buildInitialStatsForRangeWithGranularity(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil, "")
 	if len(unscoped.AllModels) != len(unscoped.Models) {
 		t.Fatalf("without a model filter all models must match the models list = %+v vs %+v", unscoped.AllModels, unscoped.Models)
 	}
@@ -441,7 +441,7 @@ func TestInitialStatsAllModelsIgnoreModelFilter(t *testing.T) {
 	}
 
 	full := StatsResponse{AllModels: []string{"claude-sonnet-4-5", "gpt-5.2-codex"}, Groups: []GroupStats{{Dimensions: Dimensions{Model: "gpt-5.2-codex"}, Counters: Counters{Requests: 1}}}}
-	compact := initialStatsFromFull(full, queryRange)
+	compact := initialStatsFromFullWithGranularity(full, queryRange, "")
 	if len(compact.AllModels) != 2 || compact.AllModels[0] != "claude-sonnet-4-5" {
 		t.Fatalf("compact all models = %+v", compact.AllModels)
 	}
@@ -499,11 +499,11 @@ func TestUntitledModelAggregatesStayBackendNeutral(t *testing.T) {
 	if len(stats.ModelSeries) != 2 || stats.ModelSeries[0].Model != "" || stats.ModelSeries[1].Model != "named" {
 		t.Fatalf("model series = %+v", stats.ModelSeries)
 	}
-	initial := buildInitialStatsForRange(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil)
+	initial := buildInitialStatsForRangeWithGranularity(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil, "")
 	if len(initial.Models) != 2 || initial.Models[0].Model != "" || initial.Models[1].Model != "named" {
 		t.Fatalf("initial models = %+v", initial.Models)
 	}
-	trend := buildStatsTrendForRange(data, now.Add(-time.Hour), queryRange, Filter{}, now)
+	trend := buildStatsTrendForRangeWithGranularity(data, now.Add(-time.Hour), queryRange, Filter{}, now, "")
 	if len(trend.ModelSeries) != 2 || trend.ModelSeries[0].Model != "" || trend.ModelSeries[1].Model != "named" {
 		t.Fatalf("trend models = %+v", trend.ModelSeries)
 	}
@@ -512,7 +512,7 @@ func TestUntitledModelAggregatesStayBackendNeutral(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(body), legacyUntitledModelName) {
+		if strings.Contains(string(body), LegacyUntitledModelName) {
 			t.Fatalf("%s response leaked backend placeholder: %s", name, body)
 		}
 	}
@@ -525,15 +525,232 @@ func TestLegacyUntitledModelFilterCompatibility(t *testing.T) {
 		{Hour: hour, Dimensions: Dimensions{Model: ""}}:      {Requests: 2, TotalTokens: 20},
 		{Hour: hour, Dimensions: Dimensions{Model: "named"}}: {Requests: 1, TotalTokens: 10},
 	}
-	filter := Filter{Model: legacyUntitledModelName}
+	filter := Filter{Model: LegacyUntitledModelName}
 	stats := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, Range{Name: "retention"}, filter, now, nil, allGroupFields())
 	if stats.Summary.Requests != 2 || stats.Summary.TotalTokens != 20 || len(stats.Groups) != 1 || stats.Groups[0].Model != "" {
 		t.Fatalf("legacy unnamed-model filter stats = %+v", stats)
 	}
-	if !ModelFilterMatches(legacyUntitledModelName, "") || ModelFilterMatches(legacyUntitledModelName, "named") {
+	if !ModelFilterMatches(LegacyUntitledModelName, "") || ModelFilterMatches(LegacyUntitledModelName, "named") {
 		t.Fatal("legacy unnamed-model filter compatibility is incorrect")
 	}
 	if !ModelFilterMatches(untitledModelFilter, "") || ModelFilterMatches(untitledModelFilter, "named") {
 		t.Fatal("locale-neutral unnamed-model filter compatibility is incorrect")
+	}
+}
+
+func TestCompactBucketSecondsUsesRangeEndAndMinuteWidth(t *testing.T) {
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	since := now.Add(-60 * 24 * time.Hour)
+
+	if got := compactBucketSeconds(Range{Name: "24h"}, since, now); got != 300 {
+		t.Fatalf("24h bucket seconds = %d, want 300", got)
+	}
+	if got := compactBucketSeconds(Range{Name: "7d"}, since, now); got != 3600 {
+		t.Fatalf("7d bucket seconds = %d, want 3600", got)
+	}
+	if got := compactBucketSeconds(Range{Name: "30d"}, since, now); got != 21600 {
+		t.Fatalf("30d bucket seconds = %d, want 21600", got)
+	}
+
+	// Historical single-day range 35 days ago must use its 24h span (300s), not now.Sub(start).
+	historicalDay := Range{Name: "custom", Start: now.Add(-35 * 24 * time.Hour), End: now.Add(-34 * 24 * time.Hour)}
+	if got := compactBucketSeconds(historicalDay, since, now); got != 300 {
+		t.Fatalf("historical 24h custom range bucket seconds = %d, want 300", got)
+	}
+
+	// Custom ranges up to 6h fit within 360 one-minute buckets.
+	for _, span := range []time.Duration{5 * time.Hour, 6 * time.Hour} {
+		if got := compactBucketSeconds(Range{Name: "custom", Start: now.Add(-span), End: now}, since, now); got != 60 {
+			t.Fatalf("%v custom range bucket seconds = %d, want 60", span, got)
+		}
+	}
+	if got := compactBucketSeconds(Range{Name: "custom", Start: now.Add(-6*time.Hour - time.Minute), End: now}, since, now); got != 300 {
+		t.Fatalf("6h1m custom range bucket seconds = %d, want 300", got)
+	}
+}
+
+func TestBucketSecondsForGranularityRespectsCaps(t *testing.T) {
+	for _, valid := range []string{"", "minute", "hour", "day", "week", "month", " minute "} {
+		if _, err := ParseGranularity(valid); err != nil {
+			t.Fatalf("ParseGranularity(%q) unexpected error: %v", valid, err)
+		}
+	}
+	if _, err := ParseGranularity("bogus"); err == nil || errs.HTTPStatus(err) != 400 {
+		t.Fatalf("ParseGranularity(bogus) err = %v", err)
+	}
+
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	since := now.Add(-2000 * 24 * time.Hour)
+
+	for _, span := range []time.Duration{24 * time.Hour, 25 * time.Hour} {
+		r := Range{Name: "custom", Start: now.Add(-span), End: now}
+		if got := bucketSecondsForGranularity(r, since, now, "minute"); got != 60 {
+			t.Fatalf("minute granularity for %v = %d, want 60", span, got)
+		}
+	}
+	if got := bucketSecondsForGranularity(Range{Name: "custom", Start: now.Add(-48 * time.Hour), End: now}, since, now, "minute"); got != 900 {
+		t.Fatalf("48h minute granularity = %d, want capped 900", got)
+	}
+
+	for _, span := range []time.Duration{30 * 24 * time.Hour, 31*24*time.Hour + time.Hour} {
+		r := Range{Name: "custom", Start: now.Add(-span), End: now}
+		if got := bucketSecondsForGranularity(r, since, now, "hour"); got != 3600 {
+			t.Fatalf("hour granularity for %v = %d, want 3600", span, got)
+		}
+	}
+	if got := bucketSecondsForGranularity(Range{Name: "custom", Start: now.Add(-60 * 24 * time.Hour), End: now}, since, now, "hour"); got != 21600 {
+		t.Fatalf("60d hour granularity = %d, want capped 21600", got)
+	}
+
+	// Asking for a coarser view on a short range must not coarsen server buckets.
+	if got := bucketSecondsForGranularity(Range{Name: "custom", Start: now.Add(-24 * time.Hour), End: now}, since, now, "day"); got != 300 {
+		t.Fatalf("24h day granularity = %d, want preserved 300", got)
+	}
+	if got := bucketSecondsForGranularity(Range{Name: "custom", Start: now.Add(-500 * 24 * time.Hour), End: now}, since, now, "day"); got != 86400 {
+		t.Fatalf("500d day granularity = %d, want 86400", got)
+	}
+	if got := bucketSecondsForGranularity(Range{Name: "custom", Start: now.Add(-2000 * 24 * time.Hour), End: now}, since, now, "day"); got != 604800 {
+		t.Fatalf("2000d day granularity = %d, want capped 604800", got)
+	}
+}
+
+func TestStatsWithMinuteGranularityKeepsPerMinuteBuckets(t *testing.T) {
+	st, err := Open(testConfig(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := st.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	now := time.Now().UTC().Truncate(5 * time.Minute)
+	t1 := now.Add(-4 * time.Minute)
+	t2 := now.Add(-3 * time.Minute)
+	for _, usage := range []Usage{
+		{Dimensions: Dimensions{Provider: "openai", Model: "gpt-test"}, RequestedAt: t1, Counters: Counters{Requests: 1, TotalTokens: 10}},
+		{Dimensions: Dimensions{Provider: "openai", Model: "gpt-test"}, RequestedAt: t2, Counters: Counters{Requests: 1, TotalTokens: 20}},
+	} {
+		if err := st.Record(usage); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	dayRange := Range{Name: "custom", Start: now.Add(-24 * time.Hour), End: now}
+	defaultInitial, err := st.QueryInitialStatsByFilterWithGranularity(dayRange, Filter{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaultInitial.BucketSeconds != 300 || len(defaultInitial.Series) != 1 {
+		t.Fatalf("24h default initial = %+v", defaultInitial)
+	}
+	minuteInitial, err := st.QueryInitialStatsByFilterWithGranularity(dayRange, Filter{}, "minute")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if minuteInitial.BucketSeconds != 60 || len(minuteInitial.Series) != 2 {
+		t.Fatalf("24h minute initial = %+v", minuteInitial)
+	}
+	minuteTrend, err := st.QueryStatsTrendByFilterWithGranularity(dayRange, Filter{}, "minute")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if minuteTrend.BucketSeconds != 60 || len(minuteTrend.ModelSeries) != 2 {
+		t.Fatalf("24h minute trend = %+v", minuteTrend)
+	}
+
+	exactEnd := now.Add(-90 * time.Second)
+	exactFiveHours := Range{Name: "custom", Start: exactEnd.Add(-5 * time.Hour), End: exactEnd}
+	exactDefaultInitial, err := st.QueryInitialStatsByFilterWithGranularity(exactFiveHours, Filter{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exactDefaultInitial.BucketSeconds != 60 || len(exactDefaultInitial.Series) != 2 {
+		t.Fatalf("5h exact default initial = %+v", exactDefaultInitial)
+	}
+	exactMinuteTrend, err := st.QueryStatsTrendByFilterWithGranularity(exactFiveHours, Filter{}, "minute")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exactMinuteTrend.BucketSeconds != 60 || len(exactMinuteTrend.ModelSeries) != 2 {
+		t.Fatalf("5h exact minute trend = %+v", exactMinuteTrend)
+	}
+}
+
+func TestStatsSeriesEmitAccountingAwareCacheRateSums(t *testing.T) {
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	hour := now.Add(-10 * time.Minute).Truncate(time.Minute).Unix()
+	queryRange := Range{Name: "custom", Start: now.Add(-time.Hour), End: now}
+
+	data := map[aggregateKey]Counters{
+		// Claude write-only where upstream copied CacheCreationTokens into CachedTokens -> 0 / 1500.
+		{Hour: hour, Dimensions: Dimensions{Provider: "claude", Model: "shared"}}: {
+			Requests:            1,
+			InputTokens:         1_000,
+			CachedTokens:        500,
+			CacheCreationTokens: 500,
+		},
+		// OpenAI read hit -> 400 / 1000.
+		{Hour: hour, Dimensions: Dimensions{Provider: "openai", Model: "shared"}}: {
+			Requests:        1,
+			InputTokens:     1_000,
+			CachedTokens:    400,
+			CacheReadTokens: 400,
+		},
+		// Unknown provider -> 0 / 0 (skipped from numerator and denominator).
+		{Hour: hour, Dimensions: Dimensions{Provider: "mystery-vendor", Model: "unknown-m"}}: {
+			Requests:        1,
+			InputTokens:     9_000,
+			CacheReadTokens: 9_000,
+		},
+	}
+
+	full := buildStatsForRangeWithFilter(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil, allGroupFields())
+	if len(full.Series) != 1 || full.Series[0].CacheRateNumerator != 400 || full.Series[0].CacheRateDenominator != 2_500 {
+		t.Fatalf("full.Series cache rate = %+v, want 400/2500", full.Series)
+	}
+
+	memInitial := buildInitialStatsForRangeWithGranularity(data, now.Add(-time.Hour), now, queryRange, Filter{}, now, nil, "hour")
+	exactInitial := initialStatsFromFullWithGranularity(full, queryRange, "hour")
+	for name, initResp := range map[string]InitialStatsResponse{"mem": memInitial, "exact": exactInitial} {
+		if len(initResp.Series) != 1 || initResp.Series[0].CacheRateNumerator != 400 || initResp.Series[0].CacheRateDenominator != 2_500 {
+			t.Fatalf("%s initial series cache rate = %+v, want 400/2500", name, initResp.Series)
+		}
+		var shared, unknown ModelStats
+		for _, m := range initResp.Models {
+			switch m.Model {
+			case "shared":
+				shared = m
+			case "unknown-m":
+				unknown = m
+			}
+		}
+		if shared.CacheRateNumerator != 400 || shared.CacheRateDenominator != 2_500 {
+			t.Fatalf("%s shared ModelStats cache rate = %d/%d, want 400/2500", name, shared.CacheRateNumerator, shared.CacheRateDenominator)
+		}
+		if unknown.CacheRateNumerator != 0 || unknown.CacheRateDenominator != 0 {
+			t.Fatalf("%s unknown ModelStats cache rate = %d/%d, want 0/0", name, unknown.CacheRateNumerator, unknown.CacheRateDenominator)
+		}
+	}
+
+	memTrend := buildStatsTrendForRangeWithGranularity(data, now.Add(-time.Hour), queryRange, Filter{}, now, "hour")
+	exactTrend := trendStatsFromFullWithGranularity(full, queryRange, "hour")
+	for name, trendResp := range map[string]StatsTrendResponse{"mem": memTrend, "exact": exactTrend} {
+		var sharedPt, unknownPt ModelSeriesPoint
+		for _, p := range trendResp.ModelSeries {
+			switch p.Model {
+			case "shared":
+				sharedPt = p
+			case "unknown-m":
+				unknownPt = p
+			}
+		}
+		if sharedPt.CacheRateNumerator != 400 || sharedPt.CacheRateDenominator != 2_500 {
+			t.Fatalf("%s shared trend cache rate = %d/%d, want 400/2500", name, sharedPt.CacheRateNumerator, sharedPt.CacheRateDenominator)
+		}
+		if unknownPt.CacheRateNumerator != 0 || unknownPt.CacheRateDenominator != 0 {
+			t.Fatalf("%s unknown trend cache rate = %d/%d, want 0/0", name, unknownPt.CacheRateNumerator, unknownPt.CacheRateDenominator)
+		}
 	}
 }

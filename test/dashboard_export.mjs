@@ -7,54 +7,9 @@ if (!htmlPath || !chromePath) {
 }
 
 const dashboardHTML = await readDashboardFile(htmlPath);
-const resourceBase = '/v0/resource/plugins/export-browser-test';
 const managementBase = '/v0/management/plugins/export-browser-test';
 const GOOD_KEY = 'export-browser-key';
 const EXPORT_MODEL = 'export-browser-model';
-
-const groupRow = {
-  model: EXPORT_MODEL,
-  provider: 'openai',
-  source: 'cli',
-  executor_type: 'openai',
-  auth_type: 'api_key',
-  service_tier: '',
-  reasoning_effort: '',
-  requests: 2,
-  failed_requests: 0,
-  input_tokens: 10,
-  output_tokens: 20,
-  reasoning_tokens: 0,
-  cache_read_tokens: 0,
-  cache_creation_tokens: 0,
-  total_tokens: 30,
-  average_ttft_ns: 200000,
-  average_latency_ns: 1000000,
-  api_key_ref: 'g1:ab',
-  api_key: '',
-  api_key_status: 'available',
-  price_source: 'models.dev',
-};
-const requestRow = {
-  sequence: 1,
-  time: '2026-08-23T11:59:00.000Z',
-  model: EXPORT_MODEL,
-  provider: 'openai',
-  source: 'cli',
-  result: 'success',
-  input_tokens: 10,
-  output_tokens: 20,
-  reasoning_tokens: 0,
-  cache_read_tokens: 0,
-  cache_creation_tokens: 0,
-  total_tokens: 30,
-  latency_ns: 1000000,
-  ttft_ns: 200000,
-  generation_ns: 800000,
-  tps: 25,
-  cache_hit: false,
-  estimated_cost: { priced: true, input_usd: 1, output_usd: 2, cache_read_usd: 0, cache_creation_usd: 0, total_usd: 3, source: 'models.dev', accounting_mode: 'token', tier_threshold: 0 },
-};
 
 const host = startDashboardServer({
   dashboardHTML,
@@ -114,7 +69,7 @@ try {
 
   await authenticate(page, { managementBase: host.managementBase, key: GOOD_KEY });
 
-  // The export menu opens from the toolbar and lists the three exports.
+  // Export menu opens with two groups covering three export actions and one restore action.
   await page.locator('#exportButton').click();
   await page.locator('#exportMenu').waitFor({ state: 'visible' });
   const menuItems = await page.evaluate(() =>
@@ -122,6 +77,35 @@ try {
   );
   if (menuItems.some((item) => item.hidden)) {
     throw new Error(`export menu items must be visible: ${JSON.stringify(menuItems)}`);
+  }
+  const desktopExportUI = await page.evaluate(() => {
+    const menu = document.getElementById('exportMenu');
+    const rect = menu.getBoundingClientRect();
+    const groups = menu.querySelectorAll('.export-menu-group').length;
+    const rows = Array.from(menu.querySelectorAll('.export-menu-item'));
+    const descsOk = rows.every((el) => {
+      const desc = el.querySelector('.export-item-desc');
+      return desc && desc.textContent.trim().length > 0;
+    });
+    const borderTop = rows.length ? getComputedStyle(rows[0]).borderTopWidth : '';
+    return {
+      left: rect.left,
+      right: rect.right,
+      viewportWidth: window.innerWidth,
+      groups,
+      rowCount: rows.length,
+      descsOk,
+      borderTop,
+    };
+  });
+  if (desktopExportUI.groups !== 2 || desktopExportUI.rowCount !== 4 || !desktopExportUI.descsOk) {
+    throw new Error(`export menu groups/descriptions mismatch: ${JSON.stringify(desktopExportUI)}`);
+  }
+  if (desktopExportUI.borderTop !== '0px') {
+    throw new Error(`export menu items must stay borderless by default: ${JSON.stringify(desktopExportUI)}`);
+  }
+  if (desktopExportUI.left < 8 || desktopExportUI.right > desktopExportUI.viewportWidth - 8) {
+    throw new Error(`desktop export menu must stay inside viewport bounds: ${JSON.stringify(desktopExportUI)}`);
   }
 
   // CSV export builds both detail files in one action: BOM-prefixed content,
@@ -141,8 +125,8 @@ try {
   if (requestCsv.head.length !== 3 || bom.some((byte, index) => requestCsv.head[index] !== byte)) {
     throw new Error(`request CSV must start with a UTF-8 BOM, got ${JSON.stringify(requestCsv.head)}`);
   }
-  if (!modelCsv.text.includes(EXPORT_MODEL)) {
-    throw new Error(`request CSV must contain the exported model: ${modelCsv.text.slice(0, 400)}`);
+  if (!requestCsv.text.includes(EXPORT_MODEL)) {
+    throw new Error(`request CSV must contain the exported model: ${requestCsv.text.slice(0, 400)}`);
   }
   if (!modelCsv.text.includes(EXPORT_MODEL)) {
     throw new Error(`model CSV must contain the exported model: ${modelCsv.text.slice(0, 400)}`);
@@ -186,6 +170,83 @@ try {
   if (pngExport.type !== 'image/png' || pngExport.size === 0) {
     throw new Error(`PNG export must carry a non-empty image: ${JSON.stringify(pngExport)}`);
   }
+
+  // Mobile 390px viewport: export menu centers safely with zero overflow.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#exportButton').click();
+  await page.locator('#exportMenu').waitFor({ state: 'visible' });
+  const mobileExportBounds = await page.evaluate(() => {
+    const rect = document.getElementById('exportMenu').getBoundingClientRect();
+    return {
+      left: rect.left,
+      right: rect.right,
+      width: rect.width,
+      scrollWidth: document.documentElement.scrollWidth,
+    };
+  });
+  if (mobileExportBounds.left < 8 || mobileExportBounds.right > 382 || mobileExportBounds.scrollWidth > 390) {
+    throw new Error(`mobile export menu overflowed 390px viewport: ${JSON.stringify(mobileExportBounds)}`);
+  }
+  await page.locator('#exportButton').click();
+  await page.waitForFunction(() => document.getElementById('exportMenu').hidden);
+
+  // Small phone (320x568) and short desktop (1280x420): export menu must stay inside viewport without overlapping trigger.
+  for (const vp of [{ width: 320, height: 568 }, { width: 1280, height: 420 }]) {
+    await page.setViewportSize(vp);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.locator('#exportButton').click();
+    await page.locator('#exportMenu').waitFor({ state: 'visible' });
+    const bounds = await page.evaluate(() => {
+      const btn = document.getElementById('exportButton').getBoundingClientRect();
+      const menu = document.getElementById('exportMenu');
+      const rect = menu.getBoundingClientRect();
+      const overlapsBtn = !(rect.bottom <= btn.top || rect.top >= btn.bottom || rect.right <= btn.left || rect.left >= btn.right);
+      return {
+        top: rect.top,
+        bottom: rect.bottom,
+        left: rect.left,
+        right: rect.right,
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        overlapsBtn,
+      };
+    });
+    if (bounds.top < 8 || bounds.bottom > bounds.innerHeight || bounds.left < 8 || bounds.right > bounds.innerWidth - 8 || bounds.overlapsBtn) {
+      throw new Error(`export menu placement/overlap check failed at ${vp.width}x${vp.height}: ${JSON.stringify(bounds)}`);
+    }
+    await page.locator('#exportButton').click();
+    await page.waitForFunction(() => document.getElementById('exportMenu').hidden);
+  }
+
+  // Short viewport: export menu clamps max-height to its chosen side, does not overlap trigger, and scrolls internally.
+  await page.setViewportSize({ width: 667, height: 280 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.locator('#exportButton').click();
+  await page.locator('#exportMenu').waitFor({ state: 'visible' });
+  const shortExportMenu = await page.evaluate(() => {
+    const btn = document.getElementById('exportButton').getBoundingClientRect();
+    const menu = document.getElementById('exportMenu');
+    const rect = menu.getBoundingClientRect();
+    const overlapsBtn = !(rect.bottom <= btn.top || rect.top >= btn.bottom || rect.right <= btn.left || rect.left >= btn.right);
+    menu.scrollTop = 30;
+    menu.dispatchEvent(new Event('scroll'));
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      innerHeight: window.innerHeight,
+      overflowY: getComputedStyle(menu).overflowY,
+      overlapsBtn,
+      scrollTop: menu.scrollTop,
+      stillOpen: !menu.hidden,
+    };
+  });
+  if (shortExportMenu.top < 8 || shortExportMenu.bottom > shortExportMenu.innerHeight || shortExportMenu.overflowY !== 'auto' || shortExportMenu.overlapsBtn || shortExportMenu.scrollTop <= 0 || !shortExportMenu.stillOpen) {
+    throw new Error(`short viewport export menu must clamp inside height without overlapping trigger and scroll internally: ${JSON.stringify(shortExportMenu)}`);
+  }
+
+  // Scrolling the export trigger button off-screen automatically dismisses the menu.
+  await page.evaluate(() => window.scrollTo(0, 600));
+  await page.waitForFunction(() => document.getElementById('exportMenu').hidden, undefined, { timeout: 3000 });
 
   if (pageErrors.length) {
     throw new Error(`page errors: ${pageErrors.join(' | ')}`);

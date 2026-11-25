@@ -490,9 +490,51 @@ func TestUntitledModelKeepsLegacyPriceBookCompatibility(t *testing.T) {
 		Dimensions: Dimensions{Provider: "p", Model: ""},
 		Counters:   Counters{InputTokens: 1_000, OutputTokens: 100},
 	}
-	prices := map[string]ModelPrice{legacyUntitledModelName: {Input: 2, Output: 4}}
+	prices := map[string]ModelPrice{LegacyUntitledModelName: {Input: 2, Output: 4}}
 	cost := estimateRequestCost(request, prices)
 	if !cost.Priced || cost.InputUSD != 0.002 || cost.OutputUSD != 0.0004 {
 		t.Fatalf("legacy unnamed-model price = %+v", cost)
+	}
+}
+
+func TestEstimateRequestCostClaudeAccountingAndWriteOnlyCache(t *testing.T) {
+	prices := map[string]ModelPrice{
+		"claude-sonnet": {Input: 3, Output: 15, CacheRead: 0.3, CacheCreation: 3.75},
+	}
+
+	// provider=="claude" + executor=="anthropic" must default to input_excludes_cache
+	// and never double-bill CachedTokens when it only echoes CacheCreationTokens.
+	writeOnly := estimateRequestCost(RequestDetail{
+		Dimensions: Dimensions{Provider: "claude", ExecutorType: "anthropic", Model: "claude-sonnet"},
+		Counters: Counters{
+			InputTokens:         1_000,
+			OutputTokens:        100,
+			CachedTokens:        5_000,
+			CacheReadTokens:     0,
+			CacheCreationTokens: 5_000,
+		},
+	}, prices)
+	if writeOnly.AccountingMode != accountingModeInputExcludesCache {
+		t.Fatalf("provider=claude accounting mode = %q, want %q", writeOnly.AccountingMode, accountingModeInputExcludesCache)
+	}
+	if writeOnly.BillableInputTokens != 1_000 || writeOnly.BilledCacheReadTokens != 0 || writeOnly.CacheReadUSD != 0 {
+		t.Fatalf("claude write-only cache double-billed or subtracted input: %+v", writeOnly)
+	}
+	wantWriteOnly := 1_000.0*3/1_000_000 + 100.0*15/1_000_000 + 5_000.0*3.75/1_000_000
+	if math.Abs(writeOnly.TotalUSD-wantWriteOnly) > 1e-12 {
+		t.Fatalf("claude write-only total = %.12f, want %.12f", writeOnly.TotalUSD, wantWriteOnly)
+	}
+
+	// openai-compatibility keeps input_includes_cache even if executor string mentions claude.
+	compat := estimateRequestCost(RequestDetail{
+		Dimensions: Dimensions{Provider: "openai-compatibility", ExecutorType: "claude", Model: "claude-sonnet"},
+		Counters: Counters{
+			InputTokens:     10_000,
+			OutputTokens:    100,
+			CacheReadTokens: 4_000,
+		},
+	}, prices)
+	if compat.AccountingMode != accountingModeInputIncludesCache || compat.BillableInputTokens != 6_000 {
+		t.Fatalf("openai-compatibility accounting = %+v", compat)
 	}
 }

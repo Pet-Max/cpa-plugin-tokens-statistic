@@ -117,7 +117,8 @@ func effectiveOutputTokensForTPS(dimensions Dimensions, counters Counters, expli
 	return counters.OutputTokens
 }
 
-// requestTPS 按完整请求耗时计算平均吞吐率，避免把首字前的思考 Token 算入首字后的时间窗口。
+// requestTPS computes average throughput over total request latency so pre-TTFT
+// reasoning tokens are not attributed to post-TTFT generation time.
 func requestTPS(item RequestDetail, explicitTotal bool) float64 {
 	if item.LatencyNS == 0 {
 		return 0

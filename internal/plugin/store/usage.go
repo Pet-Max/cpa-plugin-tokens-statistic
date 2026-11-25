@@ -50,10 +50,8 @@ func DecodeUsage(raw []byte, now time.Time) (Usage, error) {
 	total := firstInt64(detail, "TotalTokens", "total_tokens")
 	explicitTotalTokens := total > 0
 	if total <= 0 {
-		// The SDK always serializes TotalTokens, so providers that leave it at
-		// zero still produce a present JSON field. Match the raw-record fallback
-		// used by the companion statistics implementation: input + output +
-		// reasoning, then cached tokens only when that sum is still zero.
+		// When TotalTokens is omitted or zero, fall back to input + output +
+		// reasoning, and use cached tokens only when that sum is still zero.
 		total = saturatingInt64Sum(saturatingInt64Sum(inputTokens, outputTokens), reasoningTokens)
 		if total == 0 {
 			total = cachedTokens

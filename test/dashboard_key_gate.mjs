@@ -7,44 +7,11 @@ if (!htmlPath || !chromePath) {
 }
 
 const dashboardHTML = await readDashboardFile(htmlPath);
-const resourceBase = '/v0/resource/plugins/key-gate-browser-test';
 const managementBase = '/v0/management/plugins/key-gate-browser-test';
 const GOOD_KEY = 'gate-browser-key';
-// Keys the mock rejects, mirroring a host whose management key does not match.
-const DENY_KEYS = new Set(['wrong-key', 'bad-stored-key']);
 const EMPTY_MESSAGE = '请输入管理密钥。';
 const INVALID_MESSAGE = '管理密钥无效或与当前配置不一致，请重新输入。';
 const CENTER_INVALID_MESSAGE = '管理中心记住的密钥已失效。请到管理中心重新登录，或在本页输入当前密钥。';
-
-const requestRow = {
-  sequence: 1,
-  time: '2026-08-23T11:59:00.000Z',
-  model: 'gate-browser-model',
-  provider: 'openai',
-  source: 'cli',
-  result: 'success',
-  input_tokens: 10,
-  output_tokens: 20,
-  reasoning_tokens: 0,
-  cache_read_tokens: 0,
-  cache_creation_tokens: 0,
-  total_tokens: 30,
-  latency_ns: 1000000,
-  ttft_ns: 200000,
-  generation_ns: 800000,
-  tps: 25,
-  cache_hit: false,
-};
-const groupRow = {
-  model: 'gate-browser-model',
-  provider: 'openai',
-  source: 'cli',
-  requests: 2,
-  input_tokens: 10,
-  output_tokens: 20,
-  total_tokens: 30,
-};
-
 
 // Auth-gate semantics: empty/absent keys and deny-listed keys are rejected
 // with 401 before any endpoint runs; /api-key-info arrives late (900ms) to
@@ -234,9 +201,9 @@ try {
     throw new Error('a rejected remembered key must be wiped from storage');
   }
 
-  // Phase D: a stale key remembered by the CPA management center is rejected
-  // with the dedicated center-credentials guidance; the rejection is also
-  // recorded so later boots in this tab skip the center fallback.
+  // Phase D: a stale key persisted in shared host storage (cli-proxy-auth) is
+  // rejected with the dedicated stored-credentials guidance; the rejection is also
+  // recorded so later boots in this tab skip the shared fallback.
   await page.evaluate(() => {
     localStorage.setItem('cli-proxy-auth', window.__obf(JSON.stringify({ managementKey: 'wrong-key' })));
     sessionStorage.clear();

@@ -349,7 +349,7 @@ func (r *pluginRuntime) statsFilter(request pluginapi.ManagementRequest) (store.
 // top of the per-surface filters; the requests and groups endpoints keep
 // their own local `model` parameter for table-level narrowing.
 func scopeModelFilter(request pluginapi.ManagementRequest, filter store.Filter) store.Filter {
-	if model := request.Query.Get("scope_model"); model != "" {
+	if model := store.NormalizeDimension(request.Query.Get("scope_model")); model != "" {
 		filter.Model = store.CompactModelName(model)
 	}
 	return filter
@@ -362,7 +362,11 @@ func (r *pluginRuntime) initialStatsResponse(request pluginapi.ManagementRequest
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	stats, err := r.store.QueryInitialStatsByFilter(queryRange, filter)
+	granularity, err := store.ParseGranularity(request.Query.Get("granularity"))
+	if err != nil {
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
+	}
+	stats, err := r.store.QueryInitialStatsByFilterWithGranularity(queryRange, filter, granularity)
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
@@ -377,7 +381,11 @@ func (r *pluginRuntime) statsTrendResponse(request pluginapi.ManagementRequest) 
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	stats, err := r.store.QueryStatsTrendByFilter(queryRange, filter)
+	granularity, err := store.ParseGranularity(request.Query.Get("granularity"))
+	if err != nil {
+		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
+	}
+	stats, err := r.store.QueryStatsTrendByFilterWithGranularity(queryRange, filter, granularity)
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
@@ -427,7 +435,22 @@ func (r *pluginRuntime) groupsStatsResponse(request pluginapi.ManagementRequest)
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
 	}
-	filter.Model = store.NormalizeDimension(request.Query.Get("model"))
+	// Intersect global scope_model with the table-local model filter semantically
+	// (treating untitled-model sentinels as equivalent) and short-circuit to an empty
+	// page when the two filters are disjoint.
+	disjointModelFilter := false
+	if localModel := store.NormalizeDimension(request.Query.Get("model")); localModel != "" {
+		if filter.Model == "" {
+			filter.Model = localModel
+		} else {
+			sameModel := store.ModelFilterMatches(filter.Model, localModel) ||
+				store.ModelFilterMatches(localModel, filter.Model) ||
+				(store.ModelFilterMatches(filter.Model, "") && store.ModelFilterMatches(localModel, ""))
+			if !sameModel {
+				disjointModelFilter = true
+			}
+		}
+	}
 	spec, err := store.ParseGroupSpec(request.Query["group_by"])
 	if err != nil {
 		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
@@ -438,9 +461,20 @@ func (r *pluginRuntime) groupsStatsResponse(request pluginapi.ManagementRequest)
 			excludedModels[model] = struct{}{}
 		}
 	}
-	stats, err := r.store.QueryGroupsByFilter(queryRange, filter, spec)
-	if err != nil {
-		return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
+	var stats store.GroupStatsPage
+	if disjointModelFilter {
+		stats = store.GroupStatsPage{
+			SchemaVersion: 2,
+			GeneratedAt:   time.Now().UTC(),
+			Range:         queryRange.Name,
+			Items:         []store.GroupStats{},
+			Total:         0,
+		}
+	} else {
+		stats, err = r.store.QueryGroupsByFilter(queryRange, filter, spec)
+		if err != nil {
+			return jsonResponse(errs.HTTPStatus(err), map[string]any{"error": err.Error()}), nil
+		}
 	}
 	if len(excludedModels) > 0 {
 		items := stats.Items[:0]
@@ -604,7 +638,10 @@ func (r *pluginRuntime) groupSortValues(queryRange store.Range, filter store.Fil
 			return aux
 		}
 		for _, item := range costs.Models {
-			aux[item.Model] = groupSortAux{hasCost: item.PricedRequests > 0, totalUSD: item.TotalUSD}
+			prev := aux[item.Model]
+			prev.hasCost = prev.hasCost || item.PricedRequests > 0
+			prev.totalUSD += item.TotalUSD
+			aux[item.Model] = prev
 		}
 		return aux
 	}
@@ -615,6 +652,11 @@ func (r *pluginRuntime) groupSortValues(queryRange store.Range, filter store.Fil
 		}
 		for model, entry := range book.Prices {
 			aux[model] = groupSortAux{priceSource: entry.Source}
+		}
+		if _, ok := aux[""]; !ok {
+			if legacy, ok := book.Prices[store.LegacyUntitledModelName]; ok {
+				aux[""] = groupSortAux{priceSource: legacy.Source}
+			}
 		}
 	}
 	return aux

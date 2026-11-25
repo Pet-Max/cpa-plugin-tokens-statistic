@@ -152,8 +152,8 @@ try {
   const context = await browser.newContext({ locale: 'zh-CN', timezoneId });
   // The dashboard resolves its management key before the first data fetch. Regular
   // scenarios seed the per-tab gate storage so the auth page never appears; the
-  // cpa-auth-reuse scenario instead plants the management center's persisted
-  // credentials (same envelope and obfuscation as CPA) to exercise that fallback.
+  // cpa-auth-reuse scenario instead plants persisted host storage credentials
+  // (obfuscated cli-proxy-auth envelope) to exercise that fallback.
   await context.addInitScript((reuse) => {
     window.__cpaAuthObfuscate = (plaintext) => {
       const secret = new TextEncoder().encode('cli-proxy-api-webui::secure-storage|' + window.location.host + '|' + navigator.userAgent);
@@ -185,10 +185,10 @@ try {
   if (scenario === 'cpa-auth-reuse') {
     await page.waitForFunction(() => document.querySelectorAll('#groups tr').length > 0);
     if (initialAuthHeader !== 'Bearer cpa-stored-management-key') {
-      throw new Error(`dashboard must reuse the management key stored in the management center's cli-proxy-auth envelope, got authorization header "${initialAuthHeader}"`);
+      throw new Error(`dashboard must reuse the management key stored in the persisted cli-proxy-auth envelope, got authorization header "${initialAuthHeader}"`);
     }
     if (await page.evaluate(() => !document.getElementById('authView').hidden)) {
-      throw new Error('auth page must stay closed when the stored management center credentials can be reused');
+      throw new Error('auth page must stay closed when stored host credentials can be reused');
     }
     // Negative control: the same envelope without a stored key must still park
     // the dashboard on the auth page.

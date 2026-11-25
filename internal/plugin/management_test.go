@@ -1103,3 +1103,140 @@ func TestManagementHealthEndpointIgnoresTimeRangeAndAppliesObjectFilters(t *test
 		t.Fatalf("scope_model filter leaked usage: %+v", payload.Day[23])
 	}
 }
+
+func TestManagementStatsGranularityQueryParam(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.SyncOnRecord = true
+	st, err := store.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &pluginRuntime{store: st, config: cfg}
+	defer runtime.shutdown()
+	registration, err := json.Marshal(pluginapi.ManagementRegistrationRequest{ResourceBasePath: "/v0/resource/plugins/test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.registerManagement(registration); err != nil {
+		t.Fatal(err)
+	}
+
+	now := nowUTC().Truncate(5 * time.Minute)
+	for _, usage := range []store.Usage{
+		{Dimensions: store.Dimensions{Provider: "openai", Model: "alpha"}, RequestedAt: now.Add(-4 * time.Minute), Counters: store.Counters{Requests: 1, TotalTokens: 10}},
+		{Dimensions: store.Dimensions{Provider: "openai", Model: "alpha"}, RequestedAt: now.Add(-3 * time.Minute), Counters: store.Counters{Requests: 1, TotalTokens: 20}},
+	} {
+		if err := st.Record(usage); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	call := func(path string, query url.Values) pluginapi.ManagementResponse {
+		t.Helper()
+		raw, err := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: path, Query: query})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := runtime.handleManagement(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return response
+	}
+
+	var initial store.InitialStatsResponse
+	res := call(runtime.routes.statsInitialPath, url.Values{"range": {"24h"}, "granularity": {"minute"}})
+	if res.StatusCode != http.StatusOK || json.Unmarshal(res.Body, &initial) != nil || initial.BucketSeconds != 60 || len(initial.Series) != 2 {
+		t.Fatalf("24h minute initial = %+v, body=%s", initial, res.Body)
+	}
+
+	var trend store.StatsTrendResponse
+	res = call(runtime.routes.statsTrendPath, url.Values{"range": {"24h"}, "granularity": {"minute"}})
+	if res.StatusCode != http.StatusOK || json.Unmarshal(res.Body, &trend) != nil || trend.BucketSeconds != 60 || len(trend.ModelSeries) != 2 {
+		t.Fatalf("24h minute trend = %+v, body=%s", trend, res.Body)
+	}
+
+	res = call(runtime.routes.statsTrendPath, url.Values{"range": {"30d"}, "granularity": {"hour"}})
+	trend = store.StatsTrendResponse{}
+	if res.StatusCode != http.StatusOK || json.Unmarshal(res.Body, &trend) != nil || trend.BucketSeconds != 3600 {
+		t.Fatalf("30d hour trend = %+v, body=%s", trend, res.Body)
+	}
+
+	res = call(runtime.routes.statsTrendPath, url.Values{"range": {"30d"}, "granularity": {"minute"}})
+	trend = store.StatsTrendResponse{}
+	if res.StatusCode != http.StatusOK || json.Unmarshal(res.Body, &trend) != nil || trend.BucketSeconds != 21600 {
+		t.Fatalf("30d capped minute trend = %+v, body=%s", trend, res.Body)
+	}
+
+	for _, path := range []string{runtime.routes.statsInitialPath, runtime.routes.statsTrendPath} {
+		bad := call(path, url.Values{"range": {"24h"}, "granularity": {"bogus"}})
+		if bad.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s bogus granularity status = %d body=%s", path, bad.StatusCode, bad.Body)
+		}
+	}
+}
+
+func TestManagementGroupsRespectsScopeModelFilter(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.SyncOnRecord = true
+	st, err := store.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &pluginRuntime{store: st, config: cfg}
+	defer runtime.shutdown()
+	registration, err := json.Marshal(pluginapi.ManagementRegistrationRequest{ResourceBasePath: "/v0/resource/plugins/test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.registerManagement(registration); err != nil {
+		t.Fatal(err)
+	}
+
+	now := nowUTC().Truncate(time.Minute)
+	for _, usage := range []store.Usage{
+		{Dimensions: store.Dimensions{Provider: "openai", Model: "alpha"}, RequestedAt: now.Add(-2 * time.Minute), Counters: store.Counters{Requests: 1, TotalTokens: 100}},
+		{Dimensions: store.Dimensions{Provider: "openai", Model: "beta"}, RequestedAt: now.Add(-time.Minute), Counters: store.Counters{Requests: 2, TotalTokens: 200}},
+	} {
+		if err := st.Record(usage); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	callGroups := func(query url.Values) store.GroupStatsPage {
+		t.Helper()
+		raw, err := json.Marshal(pluginapi.ManagementRequest{Method: http.MethodGet, Path: runtime.routes.statsGroupsPath, Query: query})
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := runtime.handleManagement(raw)
+		if err != nil || res.StatusCode != http.StatusOK {
+			t.Fatalf("groups query %v failed: status=%d err=%v body=%s", query, res.StatusCode, err, res.Body)
+		}
+		var page store.GroupStatsPage
+		if err := json.Unmarshal(res.Body, &page); err != nil {
+			t.Fatal(err)
+		}
+		return page
+	}
+
+	scoped := callGroups(url.Values{"range": {"24h"}, "scope_model": {"alpha"}})
+	if scoped.Total != 1 || len(scoped.Items) != 1 || scoped.Items[0].Model != "alpha" {
+		t.Fatalf("scope_model alone did not filter groups: %+v", scoped)
+	}
+
+	localOnly := callGroups(url.Values{"range": {"24h"}, "model": {"beta"}})
+	if localOnly.Total != 1 || len(localOnly.Items) != 1 || localOnly.Items[0].Model != "beta" {
+		t.Fatalf("model alone did not filter groups: %+v", localOnly)
+	}
+
+	matched := callGroups(url.Values{"range": {"24h"}, "scope_model": {"alpha"}, "model": {"alpha"}})
+	if matched.Total != 1 || len(matched.Items) != 1 || matched.Items[0].Model != "alpha" {
+		t.Fatalf("matching scope_model+model failed: %+v", matched)
+	}
+
+	disjoint := callGroups(url.Values{"range": {"24h"}, "scope_model": {"alpha"}, "model": {"beta"}})
+	if disjoint.Total != 0 || len(disjoint.Items) != 0 {
+		t.Fatalf("disjoint scope_model+model must return empty page: %+v", disjoint)
+	}
+}

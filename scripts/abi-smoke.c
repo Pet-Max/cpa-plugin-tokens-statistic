@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
         return 5;
     }
 
-    const char explicit_path_request[] = "{\"config_yaml\":\"ZGF0YV9wYXRoOiAvdG1wL2NhcC10b2tlbi11c2FnZS1zbW9rZS5kYgo=\",\"schema_version\":4294967295,\"future_optional_field\":true}";
+    const char explicit_path_request[] = "{\"config_yaml\":\"ZGI6IC90bXAvdG9rZW5zLXN0YXRpc3RpYy1zbW9rZS5kYgo=\",\"schema_version\":4294967295,\"future_optional_field\":true}";
     const char default_path_request[] = "{\"schema_version\":4294967295,\"future_optional_field\":true}";
     const char *request = expected_default_database == NULL ? explicit_path_request : default_path_request;
     cliproxy_buffer response = {0};
@@ -105,7 +105,7 @@ int main(int argc, char **argv) {
         }
         unlink(expected_default_database);
     } else {
-        unlink("/tmp/cap-token-usage-smoke.db");
+        unlink("/tmp/tokens-statistic-smoke.db");
     }
     printf("ABI smoke test passed\n");
     return 0;

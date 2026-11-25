@@ -7,11 +7,9 @@ import "encoding/base64"
 // self-contained and no external asset hosting is required.
 var pluginLogo = "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(pluginIconSVG))
 
-// The muted gray tones intentionally match the sidebar icon palette of the
-// management center. Hosts render the logo through an img element, where
-// currentColor resolves to black rather than the sidebar tone. These two tones
-// are the closest a static asset gets to the muted icon colours of both light
-// and dark panel themes.
+// Muted neutral gray tones match standard light and dark host navigation
+// sidebars. Hosts render the logo through an img element where currentColor
+// resolves to black, so fixed light/dark fills are used instead.
 const pluginIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="#72787c">
   <style>
     @media (prefers-color-scheme: dark) { :root { fill: #9c9d9b; } }

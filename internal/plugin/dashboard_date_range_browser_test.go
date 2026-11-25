@@ -137,7 +137,7 @@ func TestDashboardDimensionSortInstantFeedbackInBrowser(t *testing.T) {
 }
 
 func TestDashboardCpaAuthReuseInBrowser(t *testing.T) {
-	runDashboardDateRangeBrowserTest(t, "cpa-auth-reuse", "dashboard management-center auth reuse browser regression failed")
+	runDashboardDateRangeBrowserTest(t, "cpa-auth-reuse", "dashboard host auth reuse browser regression failed")
 }
 
 func TestDashboardPricingLastSavedStampInBrowser(t *testing.T) {

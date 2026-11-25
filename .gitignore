@@ -3,16 +3,19 @@ dist/
 *.dll
 *.dylib
 *.so
-*.h
+/*.h
 *.exe
 /abi-smoke
 /abi-smoke.exe
+/*.zip
 
 # Runtime data
 *.db
 *.db.lock
 *.db.tmp
-data/
+*.db.bak
+*.bolt
+/data/
 
 # Go tooling
 coverage.out
@@ -39,12 +42,17 @@ yarn-error.log*
 # AI / local tooling
 .ai/
 .claude/
+.codex/
+.cursor/
+.gemini/
 .zcode/
 .tmp-variants/
 .tools/
 
-# Preview screenshots / local recordings
+# Preview screenshots / local recordings / test reports
 design-preview/
+playwright-report/
+test-results/
 *.mp4
 
 # Patch leftovers
@@ -53,6 +61,8 @@ design-preview/
 
 # Local secrets
 .env
+.env.*
+!.env.example
 
 # Logs
 *.log

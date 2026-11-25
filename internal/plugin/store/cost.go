@@ -395,17 +395,19 @@ func estimateRequestCostWithResolver(request RequestDetail, resolver modelPriceR
 	price, ok := resolver.resolve(request.Model)
 	if !ok && request.Model == "" {
 		// Preserve price books configured for the pre-localization placeholder.
-		price, ok = resolver.resolve(legacyUntitledModelName)
+		price, ok = resolver.resolve(LegacyUntitledModelName)
 	}
 	if !ok {
 		return EstimatedCost{}
 	}
 
 	cacheRead := request.CacheReadTokens
-	if cacheRead == 0 {
+	cacheCreation := request.CacheCreationTokens
+	// When upstream echoes CacheCreationTokens into CachedTokens without a cache hit,
+	// avoid billing cache-creation tokens a second time as cache-read tokens.
+	if cacheRead == 0 && !(cacheCreation > 0 && request.CachedTokens == cacheCreation) {
 		cacheRead = request.CachedTokens
 	}
-	cacheCreation := request.CacheCreationTokens
 	mode := price.AccountingMode
 	if mode == "" {
 		mode = defaultAccountingMode(request.Provider, request.ExecutorType)
@@ -460,10 +462,10 @@ func estimateRequestCostWithResolver(request RequestDetail, resolver modelPriceR
 	return result
 }
 
+// defaultAccountingMode delegates to cacheAccountingForDimensions so cost
+// calculation follows the same provider cache-accounting rules as statistics.
 func defaultAccountingMode(provider, executor string) string {
-	provider = strings.ToLower(strings.TrimSpace(provider))
-	executor = strings.ToLower(strings.TrimSpace(executor))
-	if provider == "anthropic" || executor == "claude" {
+	if kind, known := cacheAccountingForDimensions(Dimensions{Provider: provider, ExecutorType: executor}); known && kind == cacheAccountingIndependent {
 		return accountingModeInputExcludesCache
 	}
 	return accountingModeInputIncludesCache

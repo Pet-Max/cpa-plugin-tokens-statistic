@@ -46,7 +46,7 @@ for symbol in cliproxy_plugin_init cliproxyPluginCall cliproxyPluginFree cliprox
   }
 done
 
-TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/cap-token-usage-darwin.XXXXXX")
+TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/tokens-statistic-darwin.XXXXXX")
 trap 'rm -rf -- "$TEST_ROOT"' EXIT
 INSTALL_DIR="$TEST_ROOT/CLIProxyAPI/plugins/darwin/$HOST_ARCH"
 INSTALLED_PLUGIN="$INSTALL_DIR/tokens-statistic.dylib"

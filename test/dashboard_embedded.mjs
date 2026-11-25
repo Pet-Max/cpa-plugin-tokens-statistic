@@ -20,8 +20,8 @@ const host = startDashboardServer({
   pluginId: 'embedded-browser-test',
   fixtures: defaultFixtures({ model: 'embedded-browser-model' }),
   rawHandler: (request, response, url) => {
-    // The management-center parent page: same origin, locale and theme set on
-    // the root element, the dashboard mounted in an iframe.
+    // Embedded host parent page: same origin, locale and theme set on
+    // the root element, with the dashboard mounted in an iframe.
     if (url.pathname === '/parent') {
       const embed = url.searchParams.get('embed') ?? '';
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -84,8 +84,7 @@ try {
   await authenticate(page, { managementBase: host.managementBase, key: GOOD_KEY, frame: dashFrame() });
 
   // Dynamic follow: mutating the parent's locale and theme at runtime must be
-  // picked up by the dashboard's MutationObserver (the management-center
-  // language/theme switching contract).
+  // picked up by the dashboard's MutationObserver.
   await page.evaluate(() => {
     document.documentElement.lang = 'zh-CN';
     document.documentElement.setAttribute('data-theme', 'dark');

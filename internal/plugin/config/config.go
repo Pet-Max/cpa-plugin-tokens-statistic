@@ -35,10 +35,9 @@ type Config struct {
 }
 
 // configYAML is the small user-facing surface: db, retention, flush, secret and
-// the health thresholds. The thresholds accept both the flat top-level keys the
-// management center writes (health_warn / health_crit) and the legacy nested
-// health block; explicit flat keys win. Compression knobs and the batch size
-// stay internal.
+// the health thresholds. The thresholds accept both flat top-level keys
+// (health_warn / health_crit) and the nested health block; explicit flat keys
+// win. Compression knobs and the batch size stay internal.
 type configYAML struct {
 	DataPath     string      `yaml:"db"`
 	Retention    *int        `yaml:"retention"`

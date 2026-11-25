@@ -15,7 +15,6 @@ func TestDashboardUsesBoundedSafeRendering(t *testing.T) {
 		"document.createDocumentFragment()",
 		"AbortController",
 		"setTimeout(function(){controller.abort();},timeout)",
-		"series.length>240",
 		"body.replaceChildren(fragment)",
 		"getElementById('analysisPlot').replaceChildren(fragment)",
 		"var hitLayer=document.getElementById('analysisHitLayer');hitLayer.setAttribute('clip-path','url(#analysisClip)');if(!precomputed)hitLayer.replaceChildren(hitFragment)",
@@ -85,16 +84,16 @@ func TestDashboardUsesBoundedSafeRendering(t *testing.T) {
 			t.Fatalf("dashboard contains unsafe pattern %q", forbidden)
 		}
 	}
-	// localStorage: the management-center envelope read, the remembered-key
+	// localStorage: the shared host auth envelope read, the remembered-key
 	// read, its single obfuscated write, its two by-name removals, the
 	// remembered preference read, and the preference write.
 	if got := strings.Count(html, "localStorage"); got != 7 {
 		t.Fatalf("localStorage used %d times, want only the cli-proxy-auth read plus the remembered-key read, obfuscated write, two by-name removals and remember-preference read/write", got)
 	}
 	// sessionStorage: the per-tab gate key read, write and invalidation, plus
-	// the rejected-center-credential marker read, write and visibility check.
+	// the rejected-host-credential marker read, write and visibility check.
 	if got := strings.Count(html, "sessionStorage"); got != 6 {
-		t.Fatalf("sessionStorage used %d times, want only the per-tab key read, write, invalidation and the rejected-center-credential marker read/write/visibility-check", got)
+		t.Fatalf("sessionStorage used %d times, want only the per-tab key read, write, invalidation and the rejected-host-credential marker read/write/visibility-check", got)
 	}
 }
 
@@ -304,7 +303,6 @@ func TestDashboardIncludesInteractiveAnalyticsFeatures(t *testing.T) {
 		`id="dimensionHeaders"`,
 		`var dimensionColumns=[`,
 		`sortButton.dataset.dimensionSort=column.key`,
-		`function sortedDimensionGroups(groups)`,
 		`hiddenDimensionColumns=new Set()`,
 		`var preferencesURL=managementBase+'/preferences'`,
 		`function dashboardPreferencesPayload()`,
@@ -338,13 +336,14 @@ func TestDashboardIncludesInteractiveAnalyticsFeatures(t *testing.T) {
 func TestDashboardCacheRateUsesAccountingAwareDenominator(t *testing.T) {
 	html := dashboardHTML
 	for _, required := range []string{
-		`function trendCacheReadTokens(point){var cacheRead=Number(point.cache_read_tokens||0);return cacheRead>0?cacheRead:Number(point.cached_tokens||0);}`,
-		`var kind=hasModelSplit?analysisModelKind(name):'subset';`,
+		`function trendCacheReadTokens(point){var kind=arguments[1],cacheRead=Number(point.cache_read_tokens||0),creation=Number(point.cache_creation_tokens||0),cached=Number(point.cached_tokens||0);if(cacheRead>0)return cacheRead;if(creation>0&&cached===creation)return 0;if(kind==='independent')return creation===0&&cached>0?cached:0;if(kind==='subset')return cached>0?cached:0;return 0;}`,
+		`kind=hasModelSplit?analysisModelKind(name):null`,
+		`if(typeof point.cache_rate_denominator==='number'){bucket.read+=Number(point.cache_rate_numerator||0);bucket.denominator+=point.cache_rate_denominator;}`,
 		`bucket.denominator+=kind==='independent'?inputTokens+creationTokens+readTokens:inputTokens;`,
 		`item.cacheRate=item.denominator>0?Math.min(100,item.read/item.denominator*100):null;`,
 		`function cacheKindSums(groups){`,
 		`kindSums.read/kindSums.denominator*100`,
-		`function analysisModelKind(name){var rows=modelRows();for(var i=0;i<rows.length;i++){if(modelName(rows[i].model)===name)return cacheAccountingKind(rows[i]);}return 'subset';}`,
+		`function analysisModelKind(name){var rows=modelRows();for(var i=0;i<rows.length;i++){if(modelName(rows[i].model)===name)return cacheAccountingKind(rows[i]);}return null;}`,
 	} {
 		if !strings.Contains(html, required) {
 			t.Fatalf("dashboard missing accounting-aware cache rate contract %q", required)
@@ -387,7 +386,7 @@ func TestDashboardRefreshPreservesTrendZoom(t *testing.T) {
 		"if(!backgroundTick){document.getElementById('dimensionPrev').disabled=true;",
 		"if(!backgroundTick){document.getElementById('requestPrev').disabled=true;",
 		"var signature=dimensionOffset+'|'+dimensionLimit+'|'+dimensionTotal+'|'+JSON.stringify(page);",
-		"document.getElementById('granularity').addEventListener('change',function(){resetTrendZooms();renderVisuals();})",
+		"document.getElementById('granularity').addEventListener('change',handleGranularityChange)",
 	} {
 		if !strings.Contains(html, required) {
 			t.Fatalf("dashboard must still reset both trend zooms when their data scope changes: %q", required)
@@ -520,13 +519,19 @@ func TestDashboardDimensionCostSortContract(t *testing.T) {
 }
 
 func TestDashboardAnalysisSeriesRenderContract(t *testing.T) {
-	publicHTML := dashboardHTML
 	for _, required := range []string{
-		// requests render as bottom bars on their own scale, empty buckets stay bare
-		`if(metric.key==='requests'){var barBase=top+plotH,barZone=plotH*0.2,barStride=Math.max(1,Math.ceil(3/slot));`,
+		// requests render before line series; full-scale when sole count metric, secondary when combined with tokens
+		`var orderedVisible=visible.slice().sort(function(a,b){return (a.key==='requests'?0:1)-(b.key==='requests'?0:1);});`,
+		`if(metric.key==='requests'){var barBase=top+plotH,barZone=tokenVisible?plotH*0.35:plotH,barStride=Math.max(1,Math.ceil(3/slot));var barW=Math.max(3.2,Math.min(18,slot*0.52)),barRx=Math.min(3,barW/2),barCls=tokenVisible?'analysis-bar is-secondary':'analysis-bar';`,
+		`analysis.axis.calls`,
+		`analysis.axis.tokens`,
+		`analysis.axis.percent`,
+		`analysis.axis.seconds`,
+		`series-key-fade`,
 		`c1y=Math.max(lo,Math.min(hi,p1.y+(p2.y-p0.y)/6)),c2y=Math.max(lo,Math.min(hi,p2.y-(p3.y-p1.y)/6))`,
 		`svgNode('rect',{x:left,y:top-6,width:plotW,height:plotH+12})`,
 		`.analysis-bar{fill:var(--metric-requests);opacity:.8}`,
+		`.analysis-bar.is-secondary{opacity:.35}`,
 		// token series: smoothed 2px lines over a bg halo; durations keep smooth 2.5px; ratios stay dashed
 		`function analysisSegments(list)`,
 		`class:'analysis-line'+(metric.kind==='percent'?' percent':(metric.kind==='count'?' count':''))`,
@@ -535,22 +540,21 @@ func TestDashboardAnalysisSeriesRenderContract(t *testing.T) {
 		`--metric-latency:#8b5cf6`,
 		`--metric-latency:#a78bfa`,
 	} {
-		if !strings.Contains(publicHTML, required) {
+		if !strings.Contains(dashboardHTML, required) {
 			t.Fatalf("dashboard missing analysis series render contract %q", required)
 		}
 	}
-	if strings.Contains(publicHTML, "'fill-opacity'") {
+	if strings.Contains(dashboardHTML, "'fill-opacity'") {
 		t.Fatal("analysis chart still renders area fills; token series must be plain lines")
 	}
-	// the PNG export keeps a canvas copy of the same design (full variant only:
-	// the public variant strips the export script section)
+	// PNG export mirrors the analysis series rendering on canvas.
 	for _, required := range []string{
-		`if(metric.key==='requests'){var barZone=chartH*0.2;`,
+		`if(metric.key==='requests'){var barZone=tokenVisible?chartH*0.35:chartH,barW=Math.max(3.2,Math.min(18,slot*0.52)),barRx=Math.min(3,barW/2),barAlpha=tokenVisible?.35:.8;`,
 		`var lineWidth=metric.kind==='percent'?2:(metric.kind==='count'?2:2.5);`,
 		`function canvasSmooth(ctx,pts)`,
 	} {
 		if !strings.Contains(dashboardHTML, required) {
-			t.Fatalf("full dashboard missing analysis export render contract %q", required)
+			t.Fatalf("dashboard missing analysis export render contract %q", required)
 		}
 	}
 	if strings.Contains(dashboardHTML, "'fill-opacity'") {
@@ -577,7 +581,8 @@ func TestDashboardAnalysisContinuousWindowContract(t *testing.T) {
 		// drag renders are throttled to ~30fps and dense windows downsample bars/hit zones
 		`barStride=Math.max(1,Math.ceil(3/slot));`,
 		`var hitStride=Math.max(1,Math.ceil(4/slot));`,
-		`select.value=duration<6*60*60*1000?'minute':'hour';`,
+		`if(duration<6*60*60*1000)return 'minute';`,
+		`select.value=defaultGranularityForRange(resolvedRangeDuration());syncGranularityOptions();`,
 	} {
 		if !strings.Contains(publicHTML, required) {
 			t.Fatalf("dashboard missing analysis continuous window contract %q", required)
@@ -787,7 +792,7 @@ func TestDashboardUsesExactBackendCostsAndPricingSync(t *testing.T) {
 		`pricingDialog.classList.add('is-open')`,
 		`pricingDialog.classList.add('is-closing')`,
 		`pricingDialog.addEventListener('transitionend'`,
-		`pricingDialog.addEventListener('cancel',function(event){event.preventDefault();closePricingDialog(true);})`,
+		`pricingDialog.addEventListener('cancel',function(event){event.preventDefault();if(!pricingBusy)closePricingDialog(true);})`,
 		`dialog#pricingDialog.is-open{opacity:1`,
 		`dialog#pricingDialog.is-closing{transition-duration:120ms}`,
 		`dialog#pricingDialog::backdrop{background:rgb(0 0 0/0)`,
@@ -874,7 +879,8 @@ func TestDashboardUsesSingleMonthLocalDateRangePicker(t *testing.T) {
 		`appliedRangeStart.toISOString()`,
 		`appliedRangeEnd.toISOString()`,
 		`function parseSavedRange(value)`,
-		`select.value=duration<6*60*60*1000?'minute':'hour';`,
+		`if(duration<6*60*60*1000)return 'minute';`,
+		`select.value=defaultGranularityForRange(resolvedRangeDuration());syncGranularityOptions();`,
 		`function positionDateRangePopover()`,
 		`placeBelow=below>=popoverHeight||below>=above`,
 		`dateRangePopover.dataset.placement=placeBelow?'bottom':'top'`,
@@ -1002,9 +1008,8 @@ func TestDashboardResponseHeaders(t *testing.T) {
 }
 
 func TestDashboardSinglePageManagementAuth(t *testing.T) {
-	// Since v0.1.1 the dashboard serves a single page: every dynamic endpoint moved to the
-	// management-key protected /v0/management/plugins/ family and the
-	// self-issued full-mode session flow was deleted.
+	// The dashboard is served as a single page backed by management-key
+	// protected /v0/management/plugins/ endpoints without a separate session flow.
 	for _, forbidden := range []string{
 		`/full-mode/`, `X-Full-Mode-Session`, `fullMode`, `fullDashboard`, `fullModeSession`,
 	} {
@@ -1288,7 +1293,7 @@ func TestDashboardCliProxyAuthReadsStateEnvelope(t *testing.T) {
 		t.Fatal("decodeCliProxyAuth must still read the management key from the flat cli-proxy-auth format")
 	}
 	if !strings.Contains(body, "parsed.state&&parsed.state.managementKey") {
-		t.Fatal("decodeCliProxyAuth must fall back to the {state:{managementKey}} envelope persisted by the management center; without it the key gate opens even inside the management center")
+		t.Fatal("decodeCliProxyAuth must fall back to the nested {state:{managementKey}} storage envelope; without it embedded authentication opens the key gate")
 	}
 }
 
@@ -1551,16 +1556,18 @@ func TestDashboardSummaryCardsShareUniformVerticalRhythm(t *testing.T) {
 }
 
 func TestPricingDialogSyncHelpAndScrollContract(t *testing.T) {
-	// The pricing dialog must keep wheel scrolling inside itself: once the
-	// dialog reaches its scroll end it must not chain to the page behind,
-	// and the page behind must not scroll while any modal dialog is open.
-	// The load-models hint sits vertically centered against its button, and
-	// each sync-settings textarea carries a public-facing help line.
+	// The pricing dialog keeps wheel scrolling contained, splits list/sync panels
+	// into tabs with mobile card layout, surfaces edit validation inside the edit
+	// modal, provides an in-theme confirmation dialog, and documents sync settings.
 	required := []string{
 		`box-shadow:0 24px 70px rgb(0 0 0/.32);overscroll-behavior:contain}`,
 		`html:has(dialog:modal){overflow:hidden}`,
+		`id="pricingTabList"`,
+		`id="pricingTabSync"`,
+		`id="priceCardList"`,
+		`id="priceEditError"`,
+		`id="priceConfirmDialog"`,
 		`<div class="model-source-main"><button id="loadCLIModels" class="control" type="button" data-i18n="button.loadModels">Load current models</button><div class="model-source-status" data-i18n="pricing.modelSourceHint">`,
-		`</div></div></div><div class="table-scroll price-table-scroll">`,
 		`.model-source-main{display:flex;align-items:center;gap:10px;flex-wrap:wrap}`,
 		`id="providerPriority" autocomplete="off"></textarea><small data-i18n="pricing.providerPriorityHelp">`,
 		`id="ignoredSuffixes" autocomplete="off"></textarea><small data-i18n="pricing.ignoredSuffixesHelp">`,
@@ -1573,13 +1580,14 @@ func TestPricingDialogSyncHelpAndScrollContract(t *testing.T) {
 			t.Fatalf("pricing dialog missing sync help/scroll contract %q", item)
 		}
 	}
+	if strings.Contains(html, "margin-right:176px") {
+		t.Fatal("pricing toolbar still contains dead 176px right margin")
+	}
 }
 
 func TestDashboardPricingLastSavedContract(t *testing.T) {
-	// The save toast must sit at the top of the viewport (64px down, user
-	// preference) instead of the old bottom placement, the tags row must end
-	// with a persistent "last saved" chip fed by the server-side saved_at
-	// field, and saving must refresh the tags row immediately.
+	// Save confirmation toast is fixed 64px below the viewport top; the tags row
+	// ends with the server-backed last-saved chip and refreshes immediately on save.
 	required := []string{
 		`<span id="lastSyncStatus" class="tag plain" data-i18n="pricing.lastSync">Not synchronized with models.dev</span><span id="lastSaveStatus" class="tag plain" data-i18n="pricing.lastSavedNone">Never saved</span></div>`,
 		"lastSync=null,lastSaved=null",
@@ -1738,6 +1746,21 @@ func TestDashboardLocalesCatalog(t *testing.T) {
 		"analysis.chart.aria",
 		"analysis.selected",
 		"analysis.modelDrill",
+		"analysis.axis.calls",
+		"analysis.axis.tokens",
+		"analysis.axis.percent",
+		"analysis.axis.seconds",
+		"pricing.tab.list",
+		"pricing.tab.sync",
+		"pricing.confirmTitle",
+		"pricing.confirmOk",
+		"export.group.report",
+		"export.group.backup",
+		"export.desc.csv",
+		"export.desc.png",
+		"export.desc.backup",
+		"export.desc.restore",
+		"export.badge.replace",
 		"result.success",
 		"result.failed",
 		"result.failedHttp",

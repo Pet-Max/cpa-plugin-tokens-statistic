@@ -1,14 +1,14 @@
 // Cache-rate consistency probe: the health panel's tooltips must show the
 // same accounting-aware cache rate as the request table for the very same
-// call/bucket. Guards the regression where the blended health formula
-// double-counted CLIProxyAPI's CachedTokens/CacheReadTokens dual-fill.
+// call/bucket. Guards against regressions where a naive blended ratio
+// double-counts CLIProxyAPI's CachedTokens/CacheReadTokens dual-fill.
 //
 // Fixture math (see helpers.mjs healthFixtures):
 //   recent slot 21: read=cached=400, input=1000 → accounting-aware 40.00%
-//                   (old blended formula showed 44.4%)
+//                   (naive blended ratio gives 44.4%)
 //   recent slot 20: no cache, input=1900 → 0.00%
 //   day slot 10 (overridden): numerator=250, denominator=1000 → 25.0%
-//                   (old blended formula showed 33.3%)
+//                   (naive blended ratio gives 33.3%)
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -36,8 +36,8 @@ const dashboardHTML = rawTemplate
 
 const GOOD_KEY = 'health-cache-browser-key';
 const fixtures = defaultFixtures();
-// One bucket with cache activity so the bucket tooltip assertion can tell the
-// accounting-aware value apart from the old blended one.
+// One bucket with cache activity so the bucket tooltip assertion can distinguish
+// the accounting-aware value from a naive blended calculation.
 fixtures.health.day[10] = {
   ...fixtures.health.day[10],
   cache_read_tokens: 250,
@@ -54,7 +54,7 @@ const host = startDashboardServer({
 const dashboardURL = await host.ready;
 const browser = await chromium.launch({ executablePath: chromePath, headless: true });
 
-// The old blended health formula, for the record only.
+// Reference naive blended helper kept solely to verify fixture separation.
 const blended = (point) => {
   const read = point.cache_read_tokens || 0, cached = point.cached_tokens || 0;
   const creation = point.cache_creation_tokens || 0, input = point.input_tokens || 0;

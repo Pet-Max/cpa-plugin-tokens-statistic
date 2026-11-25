@@ -11,7 +11,6 @@ if (!htmlPath || !chromePath) {
 }
 
 const dashboardHTML = await readFile(htmlPath);
-const resourceBase = '/v0/resource/plugins/pivot-browser-test';
 const managementBase = '/v0/management/plugins/pivot-browser-test';
 
 const records = [
@@ -146,6 +145,26 @@ try {
     throw new Error(`measure-only toggle = ${JSON.stringify(summary)}`);
   }
   await page.locator('#dimensionColumnsMenu').getByLabel('Failed').check();
+
+  // Clicking "Show all" after hiding a grouping column must reload /stats/groups with response_model restored.
+  await page.locator('#dimensionColumnsMenu').getByLabel('Upstream model').uncheck();
+  await page.waitForFunction(() => document.querySelectorAll('#groups tr').length === 2, undefined, { timeout: 5000 });
+  const groupCountBeforeShowAll = receivedGroupBy.length;
+  await Promise.all([
+    page.waitForResponse((res) => new URL(res.url()).pathname === `${managementBase}/stats/groups`),
+    page.locator('#dimensionColumnsShowAll').click(),
+  ]);
+  await page.waitForFunction(() => document.querySelectorAll('#groups tr').length === 3, undefined, { timeout: 5000 });
+  summary = await dimensionSummary();
+  if (
+    receivedGroupBy.length <= groupCountBeforeShowAll ||
+    !receivedGroupBy[receivedGroupBy.length - 1].includes('response_model') ||
+    summary.rowCount !== 3 ||
+    summary.requests !== 6 ||
+    JSON.stringify(summary.upstream) !== JSON.stringify(['alpha', 'alpha-002', '—'])
+  ) {
+    throw new Error(`dimensionColumnsShowAll failed to reload grouping dimensions: ${JSON.stringify({ summary, lastGroupBy: receivedGroupBy[receivedGroupBy.length - 1] })}`);
+  }
 
   if (pageErrors.length) {
     throw new Error(`page errors: ${pageErrors.join(' | ')}`);

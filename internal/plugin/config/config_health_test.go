@@ -42,7 +42,7 @@ func TestHealthThresholdOverridesAndValidation(t *testing.T) {
 }
 
 func TestHealthThresholdFlatKeys(t *testing.T) {
-	// The management center writes flat top-level keys.
+	// Flat top-level health threshold keys are supported directly.
 	cfg, err := Parse([]byte("health_warn: 90\nhealth_crit: 80\n"))
 	if err != nil {
 		t.Fatal(err)
